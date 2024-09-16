@@ -1,0 +1,10 @@
+{
+	"api_key": "your_key",
+	"e_mpan": "your_mpan",
+	"e_sn": "your_electric_sn",
+	"g_mprn": "your_gas_mran",
+	"g_sn": "your_gas_sn",
+	"postcode": "your_postcode",
+	"account_num": "your_acc_num",
+	"direct_debit": true
+}

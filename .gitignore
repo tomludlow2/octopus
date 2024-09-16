@@ -1,0 +1,5 @@
+GO_VAR.json
+INTELLI_VAR.json
+config.json
+reports/*
+node_modules/*
