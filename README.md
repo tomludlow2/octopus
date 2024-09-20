@@ -38,3 +38,13 @@ Things to note:
 - `test_match_tariff.js` will attempt to automate this, but is contingent on using only direct debit easy tariffs and will simply output a SUCCESS or ERROR for each tariff. 
 
 - Once you have updated these three values, you are ready to go. 
+
+
+## Rounding
+- Octopus state: 
+"Electricity consumption data is returned to the nearest 0.001kwh. For billing, consumption is rounded to the nearest 0.01kwh before multiplying by the price. The rounding method used is rounding half to even, where numbers ending in 5 are rounded up or down, towards the nearest even hundredth decimal place. As a result, 0.015 would be rounded up to 0.02, while 0.025 is rounded down to 0.02."
+- However this doesn't seem to quite match up exactly to the "Estimated price" column on the octopus data
+
+- The best approximation I can make to the "Estimated Cost" column from the Octopus CSV data is to round to 2 degrees of precision and then approximate costs. Remember that Octopus use EXCLUDING VAT on their data set csv not including VAT to change the commented line in `test_process_price.js` if comparing.
+
+- This method approximates to within 1% on average of 1 penny in cost, so that's probably as good as one can acquire 
