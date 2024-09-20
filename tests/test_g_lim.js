@@ -1,4 +1,4 @@
-// index.js
+//Does same as test_g.js but add limits to date range
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');

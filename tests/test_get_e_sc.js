@@ -1,4 +1,4 @@
-// index.js
+//Gets standing charges for electric_product_code in tariff.json between relevant dates
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +11,7 @@ const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const tariffPath = path.join(__dirname, '../tariff.json');
 const tariff = JSON.parse(fs.readFileSync(tariffPath, 'utf8'));
 
-const product_code = tariff.product_code;
+const electric_product_code = tariff.electric_product_code;
 const electricity_tariff_code = tariff.electricity_tariff_code;
 const gas_tariff_code = tariff.gas_tariff_code;
 
@@ -21,7 +21,7 @@ const start_period = "2024-09-01T00:00Z";
 const end_period = "2024-09-10T00:00Z";
 
 // Set up the URL
-const url = `https://api.octopus.energy/v1/products/${product_code}/electricity-tariffs/${electricity_tariff_code}/standing-charges/?period_from=${start_period}&period_to=${end_period}`;
+const url = `https://api.octopus.energy/v1/products/${electric_product_code}/electricity-tariffs/${electricity_tariff_code}/standing-charges/?period_from=${start_period}&period_to=${end_period}`;
 
 // Perform the request
 axios.get(url, {

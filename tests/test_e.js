@@ -1,4 +1,5 @@
-// index.js
+//This function simply loads your consumption, where more than one page of data, response.data.next provide the next data.
+
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');

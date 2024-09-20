@@ -1,4 +1,4 @@
-// test_gsp.js
+// Not really sure how this is useful, but seems to get a group letter that matches the tariff suffix
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
