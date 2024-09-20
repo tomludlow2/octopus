@@ -100,23 +100,23 @@
       "brand": "BULB"
     },
     {
-      "code": "COOP-FIX-12M-24-08-28",
+      "code": "COOP-FIX-15M-24-09-19",
       "direction": "IMPORT",
-      "full_name": "Co-op 12M Fixed August 2024 v4",
-      "display_name": "Co-op 12M Fixed",
-      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months with no exit fees.",
+      "full_name": "Co-op 15M Fixed September 2024 v1",
+      "display_name": "Co-op 15M Fixed",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 15 months with no exit fees.",
       "is_variable": false,
       "is_green": false,
       "is_tracker": false,
       "is_prepay": false,
       "is_business": false,
       "is_restricted": false,
-      "term": 12,
-      "available_from": "2024-08-28T00:00:00+01:00",
+      "term": 15,
+      "available_from": "2024-09-19T00:00:00+01:00",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COOP-FIX-12M-24-08-28/",
+          "href": "https://api.octopus.energy/v1/products/COOP-FIX-15M-24-09-19/",
           "method": "GET",
           "rel": "self"
         }
@@ -268,23 +268,23 @@
       "brand": "BULB"
     },
     {
-      "code": "CP-12M-24-08-28",
+      "code": "CP-15M-24-09-19",
       "direction": "IMPORT",
-      "full_name": "Co-op Community Power 12M Fixed August 2024 v4",
+      "full_name": "Co-op Community Power 15M Fixed September 2024 v1",
       "display_name": "Co-op Community Power",
-      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months with no exit fees.",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 15 months with no exit fees.",
       "is_variable": false,
       "is_green": true,
       "is_tracker": false,
       "is_prepay": false,
       "is_business": false,
       "is_restricted": false,
-      "term": 12,
-      "available_from": "2024-08-28T00:00:00+01:00",
+      "term": 15,
+      "available_from": "2024-09-19T00:00:00+01:00",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/CP-12M-24-08-28/",
+          "href": "https://api.octopus.energy/v1/products/CP-15M-24-09-19/",
           "method": "GET",
           "rel": "self"
         }
@@ -700,9 +700,9 @@
       "brand": "LONDON_POWER"
     },
     {
-      "code": "OE-FIX-15M-24-09-06",
+      "code": "OE-FIX-15M-24-09-19",
       "direction": "IMPORT",
-      "full_name": "Octopus 15M Fixed August 2024 v1",
+      "full_name": "Octopus 15M Fixed September 2024 v2",
       "display_name": "Octopus 15M Fixed",
       "description": "This fixed tariff locks in your unit rates and standing charges for 15 months with no exit fees.",
       "is_variable": false,
@@ -712,11 +712,11 @@
       "is_business": false,
       "is_restricted": false,
       "term": 15,
-      "available_from": "2024-09-06T00:00:00+01:00",
+      "available_from": "2024-09-19T00:00:00+01:00",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/OE-FIX-15M-24-09-06/",
+          "href": "https://api.octopus.energy/v1/products/OE-FIX-15M-24-09-19/",
           "method": "GET",
           "rel": "self"
         }
@@ -724,9 +724,9 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "OE-FIX-15M-BB-24-09-06",
+      "code": "OE-FIX-15M-BB-24-09-19",
       "direction": "IMPORT",
-      "full_name": "Octopus 15M Fixed August 2024 v1",
+      "full_name": "Octopus 15M Fixed September 2024 v2",
       "display_name": "Octopus 15M Fixed",
       "description": "This fixed tariff locks in your unit rates and standing charges for 15 months with no exit fees.",
       "is_variable": false,
@@ -736,11 +736,11 @@
       "is_business": false,
       "is_restricted": false,
       "term": 15,
-      "available_from": "2024-09-06T00:00:00+01:00",
+      "available_from": "2024-09-19T00:00:00+01:00",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/OE-FIX-15M-BB-24-09-06/",
+          "href": "https://api.octopus.energy/v1/products/OE-FIX-15M-BB-24-09-19/",
           "method": "GET",
           "rel": "self"
         }

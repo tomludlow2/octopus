@@ -18,7 +18,7 @@ const gSn = config.g_sn;
 
 const directDebit = config.direct_debit;
 
-const product_code = tariff.product_code;
+const electric_product_code = tariff.electric_product_code;
 const gas_product_code = tariff.gas_product_code;
 const electricity_tariff_code = tariff.electricity_tariff_code;
 const gas_tariff_code = tariff.gas_tariff_code;
@@ -66,9 +66,9 @@ function get_gas_usage(start_period, end_period, apiKey, gMran, gSn) {
     });
 }
 
-function get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, product_code) {
+function get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, electric_product_code) {
     console.info("Collecting Electric Unit rates for the Time Period");
-    const url = `https://api.octopus.energy/v1/products/${product_code}/electricity-tariffs/${electricity_tariff_code}/standard-unit-rates/?period_from=${start_period}&period_to=${end_period}`;
+    const url = `https://api.octopus.energy/v1/products/${electric_product_code}/electricity-tariffs/${electricity_tariff_code}/standard-unit-rates/?period_from=${start_period}&period_to=${end_period}`;
 
     return axios.get(url, {
         auth: {
@@ -111,9 +111,9 @@ function get_gas_unit_rates(start_period, end_period, apiKey, gas_tariff_code, g
     });
 }
 
-function get_electric_standing_charge(start_period, end_period, apiKey, product_code, electricity_tariff_code) {
+function get_electric_standing_charge(start_period, end_period, apiKey, electric_product_code, electricity_tariff_code) {
     console.info("Collecting Electric Standing Charges for the Time Period");
-    const url = `https://api.octopus.energy/v1/products/${product_code}/electricity-tariffs/${electricity_tariff_code}/standing-charges/?period_from=${start_period}&period_to=${end_period}`;
+    const url = `https://api.octopus.energy/v1/products/${electric_product_code}/electricity-tariffs/${electricity_tariff_code}/standing-charges/?period_from=${start_period}&period_to=${end_period}`;
 
     return axios.get(url, {
         auth: {
@@ -160,9 +160,9 @@ async function collectData() {
     try {
         await get_electric_usage(start_period, end_period, apiKey, eMpan, eSn);
         await get_gas_usage(start_period, end_period, apiKey, gMran, gSn);
-        await get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, product_code);
+        await get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, electric_product_code);
         await get_gas_unit_rates(start_period, end_period, apiKey, gas_tariff_code, gas_product_code);
-        await get_electric_standing_charge(start_period, end_period, apiKey, product_code, electricity_tariff_code);
+        await get_electric_standing_charge(start_period, end_period, apiKey, electric_product_code, electricity_tariff_code);
         await get_gas_standing_charge(start_period, end_period, apiKey, gas_product_code, gas_tariff_code);
 
         console.log('Final Output:', output);
