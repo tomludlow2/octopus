@@ -10,8 +10,12 @@ async function insertStandingCharges(standingCharges) {
     await client.connect(); // Connect to the database
 
     const insertQuery = `
-        INSERT INTO standing_charges (energy_type, price_pence, valid_from, valid_to)
-        VALUES ($1, $2, $3, $4)
+    INSERT INTO standing_charges (energy_type, price_pence, valid_from, valid_to)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (energy_type, valid_from)
+    DO UPDATE SET 
+        price_pence = EXCLUDED.price_pence, 
+        valid_to = EXCLUDED.valid_to;
     `;
 
     try {
@@ -19,17 +23,27 @@ async function insertStandingCharges(standingCharges) {
             const energyType = key.includes('electric') ? 'electric' : 'gas'; // Determine energy type from object title
             
             for (const charge of charges) {
-                await client.query(insertQuery, [
-                    energyType,
-                    charge.value_inc_vat,
-                    charge.valid_from,
-                    charge.valid_to
-                ]);
+                try {
+                    await client.query(insertQuery, [
+                        energyType,
+                        charge.value_inc_vat,
+                        charge.valid_from,
+                        charge.valid_to
+                    ]);
+                } catch (error) {
+                    // Handle unique constraint violation (error code 23505)
+                    if (error.code === '23505') {
+                        console.error(`Duplicate entry for ${energyType} on valid_from ${charge.valid_from}:`, error.detail);
+                    } else {
+                        // Handle other errors
+                        console.error('Error inserting standing charge:', error);
+                    }
+                }
             }
         }
         console.log('Standing charges inserted successfully.');
     } catch (error) {
-        console.error('Error inserting standing charges:', error);
+        console.error('Error during insertion process:', error);
     } finally {
         await client.end(); // Ensure the client is closed
     }

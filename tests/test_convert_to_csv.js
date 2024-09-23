@@ -2,14 +2,17 @@
 const fs = require('fs');
 const path = require('path');
 
-const gas_or_electric = "gas";
+const gas_or_electric = "electric";
 
 // Load data from input.json
-const inputFile = "../reports/report_20_09_24_10_14.json";
+const inputFile = "../reports/report_22_09_24_12_42.json";
 const inputData = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
+
+const tariff = JSON.parse(fs.readFileSync("../tariff.json", 'utf8'));
+
 const electricUsage = inputData.electric_usage;
 const gasUsage = inputData.gas_usage;
-const gasConversion = 11.22063333 //Taken from Octopus 20.09.24 - should load from tariff.json
+const gasConversion = tariff.gas_conversion //Taken from Octopus 20.09.24 - should load from tariff.json
 
 
 // Function to convert electric usage to CSV format

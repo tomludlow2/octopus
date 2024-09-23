@@ -78,7 +78,7 @@ function get_electric_unit_rates(start_period, end_period, apiKey, electricity_t
     })
     .then(response => {
         console.log('Electric Unit Rates API Response:', response.data);
-        output.electric_usage_rates = response.data.results;
+        output.electric_unit_rates = response.data.results;
     })
     .catch(error => {
         console.error('Error fetching data for electric unit rates:', error);

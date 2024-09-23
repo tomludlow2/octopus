@@ -56,7 +56,8 @@ CREATE TABLE gas_consumption (
  consumption_kwh NUMERIC(10, 3) NOT NULL,
  price_pence NUMERIC(10, 2) NOT NULL,
  start_time TIMESTAMPTZ NOT NULL,
- end_time TIMESTAMPTZ NOT NULL
+ end_time TIMESTAMPTZ NOT NULL,
+ UNIQUE (start_time)
 );
 
 CREATE TABLE electric_consumption (
@@ -64,7 +65,8 @@ CREATE TABLE electric_consumption (
     consumption_kwh NUMERIC(10, 3) NOT NULL,
     price_pence NUMERIC(10, 2) NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
-    end_time TIMESTAMPTZ NOT NULL
+    end_time TIMESTAMPTZ NOT NULL,
+    UNIQUE (start_time)
 );
 
 CREATE TABLE standing_charges (
@@ -72,7 +74,8 @@ CREATE TABLE standing_charges (
     energy_type VARCHAR(10),
     price_pence NUMERIC(10, 2) NOT NULL,
     valid_from DATE NOT NULL,
-    valid_to DATE
+    valid_to DATE,
+    UNIQUE (energy_type, valid_from)
 );
 
 CREATE TABLE charging_events (
@@ -81,7 +84,8 @@ CREATE TABLE charging_events (
     estimated_cost NUMERIC(10, 2) NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
     end_time TIMESTAMPTZ NOT NULL,
-    settled BOOLEAN DEFAULT FALSE
+    settled BOOLEAN DEFAULT FALSE,
+    UNIQUE (start_time)
 );
 ```
 

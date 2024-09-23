@@ -19,7 +19,7 @@ const gSn = config.g_sn;
 
 const directDebit = config.direct_debit;
 
-const product_code = tariff.product_code;
+const electric_product_code = tariff.electric_product_code;
 const gas_product_code = tariff.gas_product_code;
 const electricity_tariff_code = tariff.electricity_tariff_code;
 const gas_tariff_code = tariff.gas_tariff_code;
@@ -74,9 +74,9 @@ function get_gas_usage(start_period, end_period, apiKey, gMran, gSn) {
     });
 }
 
-function get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, product_code) {
+function get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, electric_product_code) {
     console.info("Collecting Electric Unit rates for the Time Period");
-    const url = `https://api.octopus.energy/v1/products/${product_code}/electricity-tariffs/${electricity_tariff_code}/standard-unit-rates/?period_from=${start_period}&period_to=${end_period}`;
+    const url = `https://api.octopus.energy/v1/products/${electric_product_code}/electricity-tariffs/${electricity_tariff_code}/standard-unit-rates/?period_from=${start_period}&period_to=${end_period}`;
 
     return axios.get(url, {
         auth: {
@@ -86,7 +86,7 @@ function get_electric_unit_rates(start_period, end_period, apiKey, electricity_t
     })
     .then(response => {
         console.log('Electric Unit Rates API Response:', response.data);
-        output.electric_usage_rates = response.data.results;
+        output.electric_unit_rates = response.data.results;
     })
     .catch(error => {
         console.error('Error fetching data for electric unit rates:', error);
@@ -119,9 +119,9 @@ function get_gas_unit_rates(start_period, end_period, apiKey, gas_tariff_code, g
     });
 }
 
-function get_electric_standing_charge(start_period, end_period, apiKey, product_code, electricity_tariff_code) {
+function get_electric_standing_charge(start_period, end_period, apiKey, electric_product_code, electricity_tariff_code) {
     console.info("Collecting Electric Standing Charges for the Time Period");
-    const url = `https://api.octopus.energy/v1/products/${product_code}/electricity-tariffs/${electricity_tariff_code}/standing-charges/?period_from=${start_period}&period_to=${end_period}`;
+    const url = `https://api.octopus.energy/v1/products/${electric_product_code}/electricity-tariffs/${electricity_tariff_code}/standing-charges/?period_from=${start_period}&period_to=${end_period}`;
 
     return axios.get(url, {
         auth: {
@@ -168,9 +168,9 @@ async function collectData(start_period, end_period) {
     try {
         await get_electric_usage(start_period, end_period, apiKey, eMpan, eSn);
         await get_gas_usage(start_period, end_period, apiKey, gMran, gSn);
-        await get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, product_code);
+        await get_electric_unit_rates(start_period, end_period, apiKey, electricity_tariff_code, electric_product_code);
         await get_gas_unit_rates(start_period, end_period, apiKey, gas_tariff_code, gas_product_code);
-        await get_electric_standing_charge(start_period, end_period, apiKey, product_code, electricity_tariff_code);
+        await get_electric_standing_charge(start_period, end_period, apiKey, electric_product_code, electricity_tariff_code);
         await get_gas_standing_charge(start_period, end_period, apiKey, gas_product_code, gas_tariff_code);
 
         console.log('Final Output:', output);
@@ -196,9 +196,16 @@ async function collectData(start_period, end_period) {
 async function main() {
     try {
         const startDate = await askQuestion('Enter the start date (YYYY-MM-DD): ');
-        const startTime = await askQuestion('Enter the start time (HH:MM:SS): ');
+        let startTime = await askQuestion('Enter the start time (HH:MM:SS, default 00:00:00): ');
+        if (!startTime) {
+            startTime = '00:00:00'; // Default to 00:00:00 if no time is provided
+        }
+
         const endDate = await askQuestion('Enter the end date (YYYY-MM-DD): ');
-        const endTime = await askQuestion('Enter the end time (HH:MM:SS): ');
+        let endTime = await askQuestion('Enter the end time (HH:MM:SS, default 00:00:00): ');
+        if (!endTime) {
+            endTime = '00:00:00'; // Default to 00:00:00 if no time is provided
+        }
 
         const start_period = `${startDate}T${startTime}Z`;
         const end_period = `${endDate}T${endTime}Z`;
@@ -211,6 +218,7 @@ async function main() {
         rl.close();
     }
 }
+
 
 // Start the interactive process
 main();
