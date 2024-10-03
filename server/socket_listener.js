@@ -17,14 +17,18 @@ const audiChargingEntities = [
   'sensor.audi_q4_e_tron_state_of_charge'
 ];
 
-// WebSocket connection URL
-const ws = new WebSocket(`wss://${ha_ip}:8123/api/websocket`);
+let ws;
+let reconnectInterval = 5000; // Reconnect every 5 seconds if disconnected
 
-ws.on('open', () => {
-  // Send authentication message
-  ws.send(JSON.stringify({ type: 'auth', access_token: token }));
+// Function to establish WebSocket connection
+function connect() {
+  ws = new WebSocket(`wss://${ha_ip}:8123/api/websocket`);
 
-  // Listen for messages
+  ws.on('open', () => {
+    // Send authentication message
+    ws.send(JSON.stringify({ type: 'auth', access_token: token }));
+  });
+
   ws.on('message', (data) => {
     const response = JSON.parse(data);
 
@@ -45,9 +49,9 @@ ws.on('open', () => {
 
         // Prepare the data for insertion
         const audiEventData = {
-            entity_id: entityId,
-            state: newState.state, // Directly assign the state descriptor
-            event_time: newState.last_changed // Use last_changed as event_time
+          entity_id: entityId,
+          state: newState.state, // Directly assign the state descriptor
+          event_time: newState.last_changed // Use last_changed as event_time
         };
 
         // Call the function to insert the event into the database
@@ -55,12 +59,25 @@ ws.on('open', () => {
       }
     }
   });
-});
 
-ws.on('error', (err) => {
-  console.error('WebSocket error:', err);
-});
+  ws.on('close', () => {
+    console.log('WebSocket connection closed. Attempting to reconnect...');
+    reconnect();
+  });
 
-ws.on('close', () => {
-  console.log('WebSocket connection closed.');
-});
+  ws.on('error', (err) => {
+    console.error('WebSocket error:', err);
+    ws.close();
+  });
+}
+
+// Function to handle reconnection
+function reconnect() {
+  setTimeout(() => {
+    console.log('Reconnecting...');
+    connect();
+  }, reconnectInterval);
+}
+
+// Start the WebSocket connection
+connect();
