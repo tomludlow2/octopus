@@ -87,6 +87,15 @@ CREATE TABLE charging_events (
     settled BOOLEAN DEFAULT FALSE,
     UNIQUE (start_time)
 );
+
+CREATE TABLE audi_events (
+    id SERIAL PRIMARY KEY,
+    entity_id VARCHAR(255) NOT NULL,
+    new_state JSONB NOT NULL,
+    old_state JSONB,
+    event_time TIMESTAMPTZ DEFAULT NOW()
+);
+
 ```
 
 ## 3. Grant Permissions for User
@@ -97,10 +106,12 @@ GRANT ALL PRIVILEGES ON TABLE gas_consumption TO octopus_user;
 GRANT ALL PRIVILEGES ON TABLE electric_consumption TO octopus_user;
 GRANT ALL PRIVILEGES ON TABLE standing_charges TO octopus_user;
 GRANT ALL PRIVILEGES ON TABLE charging_events TO octopus_user;
+GRANT ALL PRIVILEGES ON TABLE audi_events TO octopus_user;
 GRANT USAGE, SELECT ON SEQUENCE charging_events_id_seq TO octopus_user;
 GRANT USAGE, SELECT ON SEQUENCE electric_consumption_id_seq TO octopus_user;
 GRANT USAGE, SELECT ON SEQUENCE gas_consumption_id_seq TO octopus_user;
 GRANT USAGE, SELECT ON SEQUENCE standing_charges_id_seq TO octopus_user;
+GRANT USAGE, SELECT ON SEQUENCE audi_events_id_seq TO octopus_user;
 ```
 
 ## 4. Verify
