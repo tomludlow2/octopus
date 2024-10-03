@@ -7,4 +7,4 @@ TEST_ELECTRIC_TARIFF.json
 TEST_GAS_TARIFF.json
 tariff.json
 db_connect.json
-
+server/server_config.json
