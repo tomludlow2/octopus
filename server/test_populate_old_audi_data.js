@@ -58,6 +58,7 @@ async function fetchAndPopulateOldAudiEvents() {
         `, [audiEventData.entity_id, audiEventData.new_state, audiEventData.event_time]);
 
         console.log(`Inserted/Updated data for entity ${entity} at ${last_changed}`);
+        console.log("EXAMPLE OF TIME:",  audiEventData.event_time);
       }
     }
     console.log('Old Audi data populated and updated successfully!');

@@ -3,62 +3,59 @@ const path = require('path');
 const csv = require('csv-parser');
 
 // Path to your CSV file
-const csvFilePath = path.join(__dirname, '../reports/simulated_car_charge_data_7_days.csv');
+const csvFilePath = path.join(__dirname, '../reports/charging_events_19_10_24_10_29.csv');
 
 // Array to store the parsed CSV data
 let chargeData = [];
 
-// Function to detect charging events
+// Function to detect charging events based on user-defined logic
 function detectChargingEvents(data) {
+    console.log("\nDATA\n", data, "\nDATA\n");
     const events = [];
-    let chargeStart = null;
-    let previousState = null;
     let inChargeEvent = false;
 
-    // Loop through sorted data to detect charging events
+    // Loop through the sorted data to detect charging events
     data.forEach((entry, index) => {
         const currentState = parseFloat(entry.new_state); // Parse the state of charge as a float
 
         // Skip if the current state is invalid or NaN
         if (isNaN(currentState)) return;
 
-        if (!inChargeEvent) {
-            // Detect when the SoC starts increasing (start of charge event)
-            if (previousState !== null && currentState > previousState) {
-                chargeStart = entry;  // Start charging
-                inChargeEvent = true; // Mark that we're in a charge event
-                // Store the previous state for start_state
+        if (index > 0) {
+            const previousState = parseFloat(data[index - 1].new_state);
+
+            // If current state is less than or equal to previous, it marks the end of a charging event
+            if (currentState <= previousState) {
+                if (inChargeEvent) {
+                    const lastEvent = events[events.length - 1];
+                    lastEvent.end_time = data[index - 1].event_time;  // Correctly set end time to the previous entry's event_time
+                    lastEvent.end_state = previousState.toString();    // Set end state to the previous entry's new_state
+                    inChargeEvent = false;
+                }
+            }
+
+            // If the current state is higher than the previous one, a charging event has started
+            if (currentState > previousState && !inChargeEvent) {
+                // Start a new charge event from the current entry
+                inChargeEvent = true;
+
+                let start_time_2 = data[index-1].event_time;
                 events.push({
-                    start_time: chargeStart.event_time,
-                    end_time: null, // Placeholder, will update later
-                    start_state: previousState.toString(), // Correctly store the previous state before charging starts
-                    end_state: null // Placeholder, will update later
+                    start_time: start_time_2,   // Use the current entry's event_time for the start time
+                    start_state: previousState.toString(), // Correctly assign the previous state's charge level
+                    end_time: null,  // Placeholder, will update later
+                    end_state: null  // Placeholder, will update later
                 });
             }
-        } else {
-            // Detect when SoC reaches a high point (charge event ends)
-            if (currentState < previousState || index === data.length - 1) {
-                // Charging ends when the SoC decreases or it's the last entry
-                const lastEvent = events[events.length - 1]; // Get the last charging event
-                lastEvent.end_time = entry.event_time; // Update end_time
-                lastEvent.end_state = previousState.toString(); // Update end_state
-
-                // Reset for next charge cycle
-                chargeStart = null;
-                inChargeEvent = false;
-            }
         }
-
-        // Update the previous state of charge
-        previousState = currentState;
     });
 
     return events;
 }
 
-// Function to sort data by event_time
+// Function to sort data by event_time (parsing event_time correctly)
 function sortDataByEventTime(data) {
-    return data.sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+    return data.sort((a, b) => new Date(Date.parse(a.event_time)) - new Date(Date.parse(b.event_time)));
 }
 
 // Read and parse the CSV file
@@ -66,7 +63,15 @@ fs.createReadStream(csvFilePath)
     .pipe(csv())
     .on('data', (row) => {
         // Assuming the CSV has 'entity_id', 'new_state', and 'event_time' columns
-        chargeData.push(row);
+        const currentState = parseFloat(row.new_state); // Parse the state as float
+        const eventTime = new Date(Date.parse(row.event_time)); // Parse event_time more robustly
+
+        if (!isNaN(currentState)) {  // Filter out non-numeric values
+            chargeData.push({
+                ...row,
+                event_time: eventTime // Store the parsed Date object
+            });
+        }
     })
     .on('end', () => {
         // Sort the data by event_time before processing
