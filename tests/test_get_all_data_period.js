@@ -23,8 +23,8 @@ const gas_product_code = tariff.gas_product_code;
 const electricity_tariff_code = tariff.electricity_tariff_code;
 const gas_tariff_code = tariff.gas_tariff_code;
 
-const start_period = '2024-08-25T00:00:00Z';
-const end_period = '2024-08-25T23:59:59Z';
+const start_period = '2024-10-01T00:00:00Z';
+const end_period = '2024-10-01T23:59:59Z';
 
 let output = {};
 

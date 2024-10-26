@@ -81,3 +81,27 @@ Things to note:
 }
 ```
 - When calling `socket_listener.js` it will then listen for, and populate the relevant data to the audi event tables in postgres. 
+
+
+## Audi Data
+### Collecting Audi Charge Data
+- Audi data can either be listened for and inserted using the `socket_listener.js` as above, or it can be manually collected and inserted using `server/test_populate_old_audi_data.js` - note start time within this function is 1/1/23.
+- Once in, you can view the data with `pg/view_audi_events.js` or export them to a usable csv with `pg/audi_events_to_csv.js` which is useful to then compare these events to subsequent functions. Note that excel doesn't auto-handle the date/time as exported to this function. Therefore you can use the following excel formula: `=TEXT(MID(A1,1,10) & " " & MID(A1,12,8), "yyyy-mm-dd hh:mm:ss")
+`
+- To run a manual tests, run `audi_events_to_csv.js` then run `tests/test_identify_charge.js` AFTER changing the file to the relevant file exported from the to_csv function. You can then map these together to check that they're locating the same charge events. 
+- Charge events are outputted as objects within an array
+
+
+### Identifying and inserting charge events
+- Currently, the steps include:
+- First ensure that the `audi_events` table is populated using a method from the above collection function. 
+- Run `invokeAudiProcessor.js` which has start_time and end_time within it. 
+- This function will query the pg audi_events table to get the relevant charge periods
+- This is done by invoking `audiDataProcessor.js`
+- This function will then output this data and insert the non-null data points to the charge_events table.
+- IF within that table, `settled=true` or if `energy_used` or `estimated_cost` is set, implying post-insertion manipulation has already happened, it won't insert/update, but if these are unset / false, it will overwrite these data points with the new data points
+- The insertion is handled by `chargeEventInsert.js`
+- This will now have a table of charge events, and if the octopus data processor is working, the unit rates / prices for these periods
+
+### Pricing charge events
+- Work in progress

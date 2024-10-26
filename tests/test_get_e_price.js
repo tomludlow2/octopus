@@ -17,8 +17,8 @@ const gas_tariff_code = tariff.gas_tariff_code;
 
 const apiKey = config.api_key;
 
-const start_period = "2024-09-01T00:00Z";
-const end_period = "2024-09-10T00:00Z";
+const start_period = '2024-10-01T00:00:00Z';
+const end_period = '2024-10-01T23:59:59Z';
 
 // Set up the URL
 const url = `https://api.octopus.energy/v1/products/${electric_product_code}/electricity-tariffs/${electricity_tariff_code}/standard-unit-rates/?period_from=${start_period}&period_to=${end_period}`;
