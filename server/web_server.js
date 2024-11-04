@@ -344,6 +344,186 @@ app.get('/view_charging_events', async (req, res) => {
 });
 
 
+app.get('/view_charge_event/:id_number', async (req, res) => {
+    const { id_number } = req.params;
+    const client = new Client(dbConfig);
+
+    try {
+        await client.connect();
+
+        // Query the specific charging event by ID
+        const result = await client.query(`
+            SELECT id, start_time, end_time, energy_used, estimated_cost, settled, percent_charged, ignore_event
+            FROM charging_events 
+            WHERE id = $1
+        `, [id_number]);
+
+        if (result.rows.length === 0) {
+            res.status(404).send('Charging event not found.');
+            return;
+        }
+
+        const event = result.rows[0];
+
+        // Format estimated_cost from pence to pounds and round to 2 decimal places
+        const estimatedCostFormatted = event.estimated_cost
+            ? `£${(Math.round(event.estimated_cost) / 100).toFixed(2)}`
+            : 'N/A';
+
+        // Generate HTML for the event details
+        const html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Charging Event Details</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body>
+            <div class="container mt-4">
+                <h1>Charging Event Details</h1>
+                <table class="table table-bordered">
+                    <tr>
+                        <th>ID</th>
+                        <td>${event.id}</td>
+                    </tr>
+                    <tr>
+                        <th>Start Time</th>
+                        <td>${new Date(event.start_time).toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                        <th>End Time</th>
+                        <td>${event.end_time ? new Date(event.end_time).toLocaleString() : 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Energy Used (kWh)</th>
+                        <td>${event.energy_used ? parseFloat(event.energy_used).toFixed(3) : 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Estimated Cost (£)</th>
+                        <td>${estimatedCostFormatted}</td>
+                    </tr>
+                    <tr>
+                        <th>Settled</th>
+                        <td>${event.settled ? 'Yes' : 'No'}</td>
+                    </tr>
+                    <tr>
+                        <th>Percent Charged (%)</th>
+                        <td>${event.percent_charged || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Ignore Event</th>
+                        <td>${event.ignore_event ? 'Yes' : 'No'}</td>
+                    </tr>
+                </table>
+                <a href="/view_charging_events" class="btn btn-secondary mt-3">Back to All Charging Events</a>
+            </div>
+        </body>
+        </html>`;
+
+        res.send(html);
+    } catch (error) {
+        console.error('Error fetching charging event details:', error);
+        res.status(500).send('Error fetching charging event details');
+    } finally {
+        await client.end();
+    }
+});
+
+
+app.get('/view_charge_event_error/:id_number', async (req, res) => {
+    const { id_number } = req.params;
+    const client = new Client(dbConfig);
+
+    try {
+        await client.connect();
+
+        // Query the specific charging event by ID
+        const result = await client.query(`
+            SELECT id, start_time, end_time, energy_used, estimated_cost, settled, percent_charged, ignore_event
+            FROM charging_events 
+            WHERE id = $1
+        `, [id_number]);
+
+        if (result.rows.length === 0) {
+            res.status(404).send('Charging event not found.');
+            return;
+        }
+
+        const event = result.rows[0];
+
+        // Format estimated_cost from pence to pounds and round to 2 decimal places
+        const estimatedCostFormatted = event.estimated_cost
+            ? `£${(Math.round(event.estimated_cost) / 100).toFixed(2)}`
+            : 'N/A';
+
+        // Generate HTML for the error page
+        const html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Error: Charging Event</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body>
+            <div class="container mt-4">
+                <h1 class="text-danger">Error Processing Charging Event</h1>
+                <p class="text-warning">There was an issue processing this charging event. Please review the details below and try again or contact support.</p>
+                
+                <table class="table table-bordered">
+                    <tr>
+                        <th>ID</th>
+                        <td>${event.id}</td>
+                    </tr>
+                    <tr>
+                        <th>Start Time</th>
+                        <td>${new Date(event.start_time).toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                        <th>End Time</th>
+                        <td>${event.end_time ? new Date(event.end_time).toLocaleString() : 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Energy Used (kWh)</th>
+                        <td>${event.energy_used ? parseFloat(event.energy_used).toFixed(3) : 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Estimated Cost (£)</th>
+                        <td>${estimatedCostFormatted}</td>
+                    </tr>
+                    <tr>
+                        <th>Settled</th>
+                        <td>${event.settled ? 'Yes' : 'No'}</td>
+                    </tr>
+                    <tr>
+                        <th>Percent Charged (%)</th>
+                        <td>${event.percent_charged || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Ignore Event</th>
+                        <td>${event.ignore_event ? 'Yes' : 'No'}</td>
+                    </tr>
+                </table>
+                
+                <a href="/view_charging_events" class="btn btn-secondary mt-3">Back to All Charging Events</a>
+            </div>
+        </body>
+        </html>`;
+
+        res.send(html);
+    } catch (error) {
+        console.error('Error fetching charging event details:', error);
+        res.status(500).send('Error fetching charging event details');
+    } finally {
+        await client.end();
+    }
+});
+
+
+
 
 // Start the server
 app.listen(port, () => {

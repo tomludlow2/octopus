@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const fs = require('fs');
 const { insertAudiEvent } = require('../lib/audiEventInsert'); // Import the function for inserting events
+const { notifyChargeComplete } = require('./notifyHomeAssistant'); // Import the notification function
 
 // Load IP and token from the config file
 const config = JSON.parse(fs.readFileSync('./server_config.json', 'utf8'));
@@ -41,7 +42,8 @@ function connect() {
 
       // Check if the entity is related to Audi charging
       if (audiChargingEntities.includes(entityId)) {
-        const newState = response.event.data.new_state;
+        const newState = response.event.data.new_state.state; // Get the new state directly
+        const lastChanged = response.event.data.new_state.last_changed;
 
         // Log the event
         console.log('Charging information change detected for:', entityId);
@@ -50,12 +52,18 @@ function connect() {
         // Prepare the data for insertion
         const audiEventData = {
           entity_id: entityId,
-          state: newState.state, // Directly assign the state descriptor
-          event_time: newState.last_changed // Use last_changed as event_time
+          state: newState,
+          event_time: lastChanged
         };
 
-        // Call the function to insert the event into the database
+        // Insert the event into the database
         insertAudiEvent(audiEventData);
+
+        // Check if the entity is the charging state and matches the specific condition
+        if (entityId === 'sensor.audi_q4_e_tron_charging_state' && newState === 'chargePurposeReachedAndNotConservationCharging') {
+          // Trigger the notification for a completed charge event
+          notifyChargeComplete();
+        }
       }
     }
   });

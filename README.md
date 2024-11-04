@@ -119,3 +119,11 @@ Things to note:
 - This will produce two csv documents for viewing in excel that write out each time interval and how it can be calculated
 - There are some important tests `fail_cost` and `fail_interval` which check that the cost is not very cheap - would imply the vehicle had been charged elsewhere, and interval is for if the interval exceeds 20 data points - implies a missing data set. 
 - Currently you have to manually correct these, that is splitting the intervals based on the data in the report. 
+
+
+## Automation
+- This uses three automation script:
+- `autoFetchOctopusData` fires twice a day to collect ocotopus data
+- `autoIdentifyChargeEvent` fires twice a day to process charge data that has been already collected from the socket listener
+- `autoPriceChargeEvents` runs an hour after identifying the charge events to price them
+- All of these push home assistant notifications using `server/notifyHomeAssistant.js` to send pre-defined links
