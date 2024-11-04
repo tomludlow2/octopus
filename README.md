@@ -67,6 +67,12 @@ Things to note:
 - `test_insert_g_sc.js` should now be a mirror of `test_insert_e_sc.js` as their logic was changed to insert standing charges at the same time. 
 - The `view_..` functions simply print out the tables for the relevant usages and standing charges
 
+## Baseline Consumption
+- This uses `pg/establish_baseline_consumption.js` and `pg/establish_baseline_consumption_ai.js` to work out the baseline energy consumption for each of the 30 minute intervals in a 24 hour cycle. You need to establish dates and times when you know the vehicle was charging so that you can exclude them. The examples here use a 2 month period to establish this. 
+- In the example, there are clearly some charging events that haven't been manually excluded, as when graphing the variance, and mean usage, there is a peak during Intelligent Go Charging hours 23:00-05:00. The `..ai.js` version uses a bit of filtering to try and remove these ones with high variance to generate mean/median consumption values. 
+- These save to the `/reports` directory.
+- Once you're happy with the median values, copy the json file to `/energy_baseline.json` for pricing usages below
+
 ## Servers
 ### Web Server
 - Runs on port `http://localhost:52529/` with, currently, endpoints `/view_electric` and `/view_gas` generating a nice little bootstrap table. It includes an option to download as a CSV which makes it easier to compare with Octopus's output data.
@@ -104,4 +110,12 @@ Things to note:
 - This will now have a table of charge events, and if the octopus data processor is working, the unit rates / prices for these periods
 
 ### Pricing charge events
-- Work in progress
+- Ensure you've collected baseline data as per the section above first into `/energy_baseline.json`
+- There are two ways of running the following scripts.
+- You can use the iterative invoker in `lib/invokePriceChargeEvent.js` which loops through the charging_events table and picks out any unprocessed events and then gets the relevant price data. 
+- The processChargingEvent function connects to a PostgreSQL database and processes a specified charging event (identified by row_number). It calculates residual energy consumption and cost over 30-minute intervals between start_time and end_time. Baseline consumption values are loaded from an external JSON file. For each interval, the function calculates the residual energy and cost by subtracting baseline consumption from actual consumption and recalculating costs accordingly. If residual costs meet the criteria (≥5.0 per interval), these values are summed. After processing, if the total residual cost is ≥10 and the valid intervals are ≤20, it updates the event with energy_used and estimated_cost. If these conditions are not met, the event is marked to be ignored in the charging_events table by setting ignore_event to true.
+- If you don't want to make any changes to the tables, you can run a dry run and simply export the data:
+- `pg/test_price_audi_events.js` 
+- This will produce two csv documents for viewing in excel that write out each time interval and how it can be calculated
+- There are some important tests `fail_cost` and `fail_interval` which check that the cost is not very cheap - would imply the vehicle had been charged elsewhere, and interval is for if the interval exceeds 20 data points - implies a missing data set. 
+- Currently you have to manually correct these, that is splitting the intervals based on the data in the report. 
