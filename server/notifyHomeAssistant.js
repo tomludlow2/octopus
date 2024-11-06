@@ -65,11 +65,14 @@ async function notifyOctopusDataFetched() {
 }
 
 // 6. Charge Event has been identified correctly
-async function notifyChargeEventIdentified() {
-    const message = "A Charge Event has been identified successfully.";
+async function notifyChargeEventIdentified(dateTime, percentageCharged) {
+    const formattedDate = new Date(dateTime).toLocaleString(); // Format the dateTime for readability
+    const message = `A Charge Event has been identified successfully.\nDate/Time: ${formattedDate}\nPercentage Charged: ${percentageCharged}%`;
     const title = "Charge Event Identified";
+    
     await sendNotification(message, title);
 }
+
 
 // notifyChargingEventPriced function with primary clickAction
 async function notifyChargingEventPriced(dateTime, price, link) {

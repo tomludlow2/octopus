@@ -301,13 +301,16 @@ app.get('/view_charging_events', async (req, res) => {
                     <tbody>`;
 
         result.rows.forEach(row => {
+            let estimatedCostFormatted = row.estimated_cost
+            ? `£${(Math.round(row.estimated_cost) / 100).toFixed(2)}`
+            : 'N/A';
             html += `
             <tr>
                 <td>${row.id}</td>
                 <td>${new Date(row.start_time).toLocaleString()}</td>
                 <td>${row.end_time ? new Date(row.end_time).toLocaleString() : ''}</td>
                 <td>${row.energy_used ? parseFloat(row.energy_used).toFixed(3) : ''}</td>
-                <td>${row.estimated_cost ? parseFloat(row.estimated_cost).toFixed(2) : ''}</td>
+                <td>${estimatedCostFormatted}</td>
                 <td>${row.settled ? 'Yes' : 'No'}</td>
                 <td>${row.percent_charged || ''}</td>
                 <td>${row.ignore_event ? 'Yes' : 'No'}</td>
