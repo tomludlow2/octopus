@@ -2,6 +2,7 @@ GO_VAR.json
 INTELLI_VAR.json
 config.json
 reports/*
+logs/*
 node_modules/*
 TEST_ELECTRIC_TARIFF.json
 TEST_GAS_TARIFF.json
