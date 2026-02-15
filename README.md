@@ -145,3 +145,12 @@ psql -d octopus_db -c "SELECT COUNT(*) FROM electric_consumption;"
 psql -d octopus_db -c "SELECT COUNT(*) FROM gas_consumption;"
 psql -d octopus_db -c "SELECT COUNT(*) FROM octopus_rate_change_audit;"
 ```
+
+
+### Inspect schema/tables/permissions (for adapting to your DB role)
+Use:
+```bash
+npm run db:inspect
+```
+
+This prints the current user, search path, schema-level `USAGE/CREATE` privileges, table/column layout, and table privileges for the current user.
