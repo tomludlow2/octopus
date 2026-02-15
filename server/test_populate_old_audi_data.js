@@ -3,7 +3,8 @@ const fs = require('fs');
 const { Pool } = require('pg');
 
 // Load sensitive database connection data
-const dbConfig = JSON.parse(fs.readFileSync('../db_connect.json', 'utf8'));
+const { loadDbConfig } = require('../lib/loadDbConfig');
+const dbConfig = loadDbConfig();
 
 // Create a new PostgreSQL client
 const pool = new Pool(dbConfig);

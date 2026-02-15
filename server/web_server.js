@@ -3,7 +3,8 @@ const fs = require('fs');
 const { Client } = require('pg');
 const path = require('path');
 
-const dbConfig = JSON.parse(fs.readFileSync('../db_connect.json', 'utf8'));
+const { loadDbConfig } = require('../lib/loadDbConfig');
+const dbConfig = loadDbConfig();
 
 const app = express();
 const port = 52529;
