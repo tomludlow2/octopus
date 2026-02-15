@@ -117,3 +117,54 @@ npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:
 ## Notes
 - Octopus billing calculations can differ slightly from API output due to rounding and VAT handling.
 - `DATABASE_SETUP.md` contains table creation and permission steps.
+
+
+## How it works (Postgres as source of truth)
+- Importing runs through `lib/octopusImporter.js` and writes only to existing tables:
+  - `electric_consumption`
+  - `gas_consumption`
+  - (existing standing charge handling remains in legacy scripts)
+- Import logic:
+  - detects missing half-hour intervals in the existing consumption tables,
+  - fetches Octopus usage for missing intervals,
+  - always refreshes a retrospective backfill window (`OCTOPUS_BACKFILL_DAYS`, default `14`) so late Octopus corrections are actioned by updating existing rows,
+  - upserts into existing consumption tables using `ON CONFLICT (start_time)`.
+- Activity logs are written to `./logs/activity-YYYY-MM-DD.log` (append-only, one line per operation).
+- Use web endpoint `/logs?date=YYYY-MM-DD&lines=500` to inspect activity logs.
+- Graph views:
+  - `/view-electric?range=day|week|month&date=YYYY-MM-DD`
+  - `/view-gas?range=day|week|month&date=YYYY-MM-DD`
+
+### Idempotency verification
+Run the same import twice for the same period:
+```bash
+npm run fetch:auto
+npm run fetch:auto
+```
+Then verify row counts stay stable:
+```bash
+psql -d octopus_db -c "SELECT COUNT(*) FROM electric_consumption;"
+psql -d octopus_db -c "SELECT COUNT(*) FROM gas_consumption;"
+```
+
+
+### Inspect schema/tables/permissions (for adapting to your DB role)
+Use:
+```bash
+npm run db:inspect
+```
+
+This prints the current user, search path, schema-level `USAGE/CREATE` privileges, table/column layout, and table privileges for the current user.
+
+
+## Interactive monthly backfill (manual Y/N confirmation)
+Use:
+```bash
+npm run fetch:monthly:interactive -- --start-month 2024-11 --max-months 12
+```
+
+Behavior:
+- Starts from the current month and walks backwards month-by-month.
+- Prompts for each month: import (`Y`), skip (`N`), or quit (`Q`).
+- After each import it prints inserted/updated counts for electric and gas.
+- Writes a month-by-month JSON report to `./reports/monthly_import_<timestamp>.json`.
