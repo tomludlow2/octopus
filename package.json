@@ -15,7 +15,8 @@
     "db:gaps": "node pg/view_missing_intervals.js",
     "electric:reprice": "node pg/reprice_historical_electric.js",
     "usage:reprice": "node pg/reprice_historical_usage.js",
-    "gaps:import": "node pg/import_missing_intervals.js"
+    "gaps:import": "node pg/import_missing_intervals.js",
+    "db:inspect": "node pg/inspect_schema_permissions.js"
   },
   "author": "",
   "license": "ISC",
