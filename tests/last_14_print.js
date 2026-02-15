@@ -2,7 +2,8 @@ const fs = require('fs');
 const { Client } = require('pg');
 
 
-const dbConfig = JSON.parse(fs.readFileSync('../db_connect.json', 'utf8'));
+const { loadDbConfig } = require('../lib/loadDbConfig');
+const dbConfig = loadDbConfig();
 
 
 // Standalone function to fetch and display gas cost data for the last 14 days
