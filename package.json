@@ -1,10 +1,21 @@
 {
   "name": "octopus-rpi-api",
   "version": "1.0.0",
-  "description": "Octoups RPi API Energy System",
+  "description": "Octopus API energy data ingestion and EV charge-event pricing",
   "main": "index.js",
   "scripts": {
-    "test": "test"
+    "test": "npm run check:syntax",
+    "check:syntax": "node scripts/check-syntax.js",
+    "fetch:auto": "node lib/AUTO_CALL_OCTOPUS.js",
+    "fetch:backfill": "node lib/invokeDataProcessor.js",
+    "charge:identify:auto": "node lib/AUTO_CHARGE_EVENT.js",
+    "charge:identify:backfill": "node lib/invokeAudiProcessor.js",
+    "charge:price:auto": "node lib/autoPriceChargeEvents.js",
+    "charge:price:next": "node lib/invokePriceChargeEvent.js",
+    "db:gaps": "node pg/view_missing_intervals.js",
+    "electric:reprice": "node pg/reprice_historical_electric.js",
+    "usage:reprice": "node pg/reprice_historical_usage.js",
+    "gaps:import": "node pg/import_missing_intervals.js"
   },
   "author": "",
   "license": "ISC",
