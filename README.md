@@ -162,7 +162,7 @@ npm run fetch:monthly:interactive -- --start-month 2024-11 --max-months 12
 ```
 
 Behavior:
-- Starts from the current month and walks backwards month-by-month.
+- Starts from the --start-month and walks backwards month-by-month.
 - Prompts for each month: import (`Y`), skip (`N`), or quit (`Q`).
 - After each import it prints inserted/updated counts for electric and gas.
 - Writes a month-by-month JSON report to `./reports/monthly_import_<timestamp>.json`.

@@ -51,14 +51,14 @@ function getMonthRanges(args) {
     const now = new Date();
     const currentMonthStart = startOfMonthUTC(now);
 
-    const lowerBound = args.startMonth
-        ? new Date(`${args.startMonth}-01T00:00:00Z`)
-        : new Date('1970-01-01T00:00:00Z');
+    const firstMonth = args.startMonth
+        ? startOfMonthUTC(new Date(`${args.startMonth}-01T00:00:00Z`))
+        : currentMonthStart;
 
     const ranges = [];
-    let cursor = currentMonthStart;
+    let cursor = firstMonth;
 
-    while (cursor >= lowerBound) {
+    while (true) {
         const monthStart = new Date(cursor);
         const nextMonthStart = addMonthsUTC(monthStart, 1);
         const monthEnd = nextMonthStart > now ? now : nextMonthStart;
@@ -74,6 +74,10 @@ function getMonthRanges(args) {
         }
 
         cursor = addMonthsUTC(cursor, -1);
+
+        if (cursor < new Date('1970-01-01T00:00:00Z')) {
+            break;
+        }
     }
 
     return ranges;
