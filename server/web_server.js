@@ -15,6 +15,127 @@ app.use(express.urlencoded({ extended: true }));
 // Middleware to parse incoming JSON data in the request body
 app.use(express.json());
 
+
+app.get('/logs', (req, res) => {
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const lineLimit = Number(req.query.lines || 500);
+    const safeLineLimit = Number.isInteger(lineLimit) && lineLimit > 0 ? Math.min(lineLimit, 5000) : 500;
+    const logPath = path.join(__dirname, '../logs', `activity-${date}.log`);
+
+    let lines = [];
+    let message = '';
+
+    if (fs.existsSync(logPath)) {
+        lines = fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).slice(-safeLineLimit).reverse();
+    } else {
+        message = `No activity log found for ${date}.`;
+    }
+
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Activity Logs</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body><div class="container mt-4"><h1>Activity Logs</h1><form class="row g-2 mb-3" method="GET"><div class="col-md-3"><input class="form-control" type="date" name="date" value="${date}" /></div><div class="col-md-3"><input class="form-control" type="number" name="lines" value="${safeLineLimit}" min="1" max="5000" /></div><div class="col-md-2"><button class="btn btn-primary" type="submit">Load</button></div></form>${message ? `<div class="alert alert-info">${message}</div>` : ''}<pre class="bg-light p-3 border rounded" style="white-space: pre-wrap;">${lines.join('\n')}</pre></div></body></html>`);
+});
+
+
+app.use('/vendor/chart.js', express.static(path.join(__dirname, '../node_modules/chart.js/dist')));
+
+function parseRangeQuery(query) {
+    const range = ['day', 'week', 'month'].includes(query.range) ? query.range : 'day';
+    const date = query.date ? new Date(`${query.date}T00:00:00Z`) : new Date();
+
+    if (Number.isNaN(date.getTime())) {
+        throw new Error('Invalid date query. Expected YYYY-MM-DD');
+    }
+
+    const start = new Date(date);
+    const end = new Date(date);
+
+    if (range === 'day') {
+        end.setUTCDate(end.getUTCDate() + 1);
+    } else if (range === 'week') {
+        const day = (start.getUTCDay() + 6) % 7;
+        start.setUTCDate(start.getUTCDate() - day);
+        end.setTime(start.getTime());
+        end.setUTCDate(end.getUTCDate() + 7);
+    } else {
+        start.setUTCDate(1);
+        end.setUTCMonth(start.getUTCMonth() + 1);
+        end.setUTCDate(1);
+    }
+
+    return { range, date: date.toISOString().slice(0, 10), startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+async function fetchEnergySeries(client, fuel, startIso, endIso, range) {
+    const table = fuel === 'electric' ? 'electric_consumption' : 'gas_consumption';
+
+    if (range === 'day') {
+        const result = await client.query(
+            `SELECT start_time AS label, consumption_kwh::float AS kwh FROM ${table} WHERE start_time >= $1 AND start_time < $2 ORDER BY start_time`,
+            [startIso, endIso]
+        );
+        return result.rows;
+    }
+
+    const result = await client.query(
+        `SELECT DATE_TRUNC('day', start_time) AS label, SUM(consumption_kwh)::float AS kwh FROM ${table} WHERE start_time >= $1 AND start_time < $2 GROUP BY DATE_TRUNC('day', start_time) ORDER BY DATE_TRUNC('day', start_time)`,
+        [startIso, endIso]
+    );
+
+    return result.rows;
+}
+
+async function fetchUsageRows(client, fuel, startIso, endIso) {
+    const table = fuel === 'electric' ? 'electric_consumption' : 'gas_consumption';
+    const result = await client.query(
+        `SELECT consumption_kwh, price_pence, start_time, end_time FROM ${table} WHERE start_time >= $1 AND start_time < $2 ORDER BY start_time LIMIT 1000`,
+        [startIso, endIso]
+    );
+
+    return result.rows;
+}
+
+function renderEnergyView({ fuel, range, date, rows, series }) {
+    const title = fuel === 'electric' ? 'Electric Consumption Data' : 'Gas Consumption Data';
+    const basePath = `/view-${fuel}`;
+    const labels = series.map((item) => new Date(item.label).toISOString());
+    const values = series.map((item) => Number(item.kwh));
+
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${title}</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body><div class="container mt-4"><h1>${title}</h1><div class="d-flex gap-2 mb-3"><a class="btn ${range === 'day' ? 'btn-primary' : 'btn-outline-primary'}" href="${basePath}?range=day&date=${date}">Day</a><a class="btn ${range === 'week' ? 'btn-primary' : 'btn-outline-primary'}" href="${basePath}?range=week&date=${date}">Week</a><a class="btn ${range === 'month' ? 'btn-primary' : 'btn-outline-primary'}" href="${basePath}?range=month&date=${date}">Month</a></div><form method="GET" class="row g-2 mb-4"><input type="hidden" name="range" value="${range}" /><div class="col-md-3"><input class="form-control" type="date" name="date" value="${date}" /></div><div class="col-md-2"><button class="btn btn-secondary" type="submit">Go</button></div></form><canvas id="usageChart" height="100"></canvas><table class="table table-bordered table-hover mt-4"><thead><tr><th>Consumption (kWh)</th><th>Price (pence)</th><th>Start Time</th><th>End Time</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${Number(row.consumption_kwh).toFixed(3)}</td><td>${Number(row.price_pence || 0).toFixed(2)}</td><td>${new Date(row.start_time).toLocaleString()}</td><td>${new Date(row.end_time).toLocaleString()}</td></tr>`).join('')}</tbody></table></div><script src="/vendor/chart.js/chart.umd.js"></script><script>new Chart(document.getElementById('usageChart'),{type:'${range === 'day' ? 'bar' : 'line'}',data:{labels:${JSON.stringify(labels)},datasets:[{label:'kWh',data:${JSON.stringify(values)},borderColor:'#1f77b4',backgroundColor:'rgba(31,119,180,0.35)'}]},options:{responsive:true,scales:{y:{beginAtZero:true}}}});</script></body></html>`;
+}
+
+async function handleEnergyView(req, res, fuel) {
+    const client = new Client(dbConfig);
+
+    try {
+        const { range, date, startIso, endIso } = parseRangeQuery(req.query);
+        await client.connect();
+        const [rows, series] = await Promise.all([
+            fetchUsageRows(client, fuel, startIso, endIso),
+            fetchEnergySeries(client, fuel, startIso, endIso, range)
+        ]);
+        res.send(renderEnergyView({ fuel, range, date, rows, series }));
+    } catch (error) {
+        console.error(`Error rendering ${fuel} view:`, error);
+        res.status(500).send(error.message);
+    } finally {
+        await client.end();
+    }
+}
+
+app.get('/view-electric', (req, res) => handleEnergyView(req, res, 'electric'));
+app.get('/view-gas', (req, res) => handleEnergyView(req, res, 'gas'));
+app.get('/view_electric', (req, res, next) => {
+    if (req.query.startDate || req.query.endDate) {
+        return next();
+    }
+    return res.redirect(`/view-electric?${new URLSearchParams(req.query).toString()}`);
+});
+app.get('/view_gas', (req, res, next) => {
+    if (req.query.startDate || req.query.endDate) {
+        return next();
+    }
+    return res.redirect(`/view-gas?${new URLSearchParams(req.query).toString()}`);
+});
+
 // Serve the electric consumption page
 app.get('/view_electric', async (req, res) => {
     const { startDate, endDate } = req.query;
