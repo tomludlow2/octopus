@@ -13,7 +13,7 @@ This project ingests Octopus API data, stores interval data in PostgreSQL, ident
 ### 2) Fetch and insert Octopus data
 - Primary pipeline: `fetchProcessAndInsertOctopusData(startDate, endDate, results)` in `lib/octopusDataProcessor.js`.
 - Processing stages:
-  1. Download usage/rates/standing charges with `getOctopusData`.
+  1. Download usage/rates/standing charges with `getOctopusData` (rates are resolved from account agreement history so tariff switches are handled for historical periods).
   2. Calculate interval prices with `processPrices`.
   3. Insert or upsert rows into:
      - `gas_consumption`,
@@ -55,3 +55,5 @@ node pg/view_missing_intervals.js --start 2024-12-01T00:00:00Z --end 2024-12-03T
 ## Historical electric repricing
 - Use `pg/reprice_historical_electric.js` to recalculate `electric_consumption.price_pence` from Octopus unit rates valid at each interval timestamp.
 - Supports `--dry-run` for auditing before writing updates.
+
+- Use `pg/reprice_historical_usage.js` to reprice electric and/or gas historical rows using tariff agreements active at each timestamp.

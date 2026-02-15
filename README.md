@@ -49,6 +49,7 @@ Tools to pull Octopus Energy API data, identify EV charge events, and store pric
 ### 1) Fetch + process Octopus usage
 - Core function: `lib/octopusDataProcessor.js` → `fetchProcessAndInsertOctopusData(startDate, endDate, results)`.
 - Collects usage/rates/standing charge data with `getOctopusData`.
+- Unit rates are resolved from account agreement history (`/accounts/{account}/`) so historical intervals use the tariff active at that time.
 - Processes usage pricing with `processPrices`.
 - Inserts into:
   - `gas_consumption`,
@@ -79,6 +80,7 @@ No. It is a manual backfill helper, not a scheduler entrypoint. It is useful whe
 - `npm run charge:price:next` → process next unpriced charge event.
 - `npm run db:gaps -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 200]`.
 - `npm run electric:reprice -- --start <iso> --end <iso> [--dry-run]`.
+- `npm run usage:reprice -- --start <iso> --end <iso> [--source electric|gas|both] [--dry-run]`.
 
 ## Finding missing periods in DB records
 Use:
@@ -89,13 +91,18 @@ npm run db:gaps -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --sou
 This checks expected 30-minute intervals and reports missing ranges for `electric_consumption`, `gas_consumption`, or both.
 
 
-## Reprice historical electric usage
+## Reprice historical usage
 Use:
+```bash
+npm run usage:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:00Z --source both --dry-run
+```
+
+This recalculates `electric_consumption` and/or `gas_consumption` rows by matching each interval timestamp to the tariff agreement active at that time, then pulling the corresponding Octopus unit rates for that tariff period. Remove `--dry-run` to persist updates.
+
+If you only need electric repricing, keep using:
 ```bash
 npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:00Z --dry-run
 ```
-
-This replays pricing for rows in `electric_consumption` by matching each interval timestamp to the Octopus unit rate valid at that time. Remove `--dry-run` to persist updates.
 
 ## Notes
 - Octopus billing calculations can differ slightly from API output due to rounding and VAT handling.
