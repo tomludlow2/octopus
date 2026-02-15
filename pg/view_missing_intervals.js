@@ -92,7 +92,8 @@ function groupContiguousIntervals(intervals) {
     return groups;
 }
 
-async function viewMissingIntervals(start, end, source = 'both', limit = 200) {
+async function viewMissingIntervals(start, end, source = 'both', limit = 200, options = {}) {
+    const { silent = false } = options;
     const client = new Client(dbConfig);
 
     try {
@@ -116,12 +117,14 @@ async function viewMissingIntervals(start, end, source = 'both', limit = 200) {
             };
         }
 
-        console.log(JSON.stringify({
-            requested_period: { start, end },
-            source,
-            limit,
-            result: response
-        }, null, 2));
+        if (!silent) {
+            console.log(JSON.stringify({
+                requested_period: { start, end },
+                source,
+                limit,
+                result: response
+            }, null, 2));
+        }
 
         return response;
     } finally {

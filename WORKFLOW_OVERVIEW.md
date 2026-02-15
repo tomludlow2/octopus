@@ -57,3 +57,5 @@ node pg/view_missing_intervals.js --start 2024-12-01T00:00:00Z --end 2024-12-03T
 - Supports `--dry-run` for auditing before writing updates.
 
 - Use `pg/reprice_historical_usage.js` to reprice electric and/or gas historical rows using tariff agreements active at each timestamp.
+
+- Use `pg/import_missing_intervals.js` to automatically backfill ranges reported by the missing-interval detector by re-running Octopus fetch/process/insert for each range.

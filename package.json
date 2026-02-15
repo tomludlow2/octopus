@@ -14,7 +14,8 @@
     "charge:price:next": "node lib/invokePriceChargeEvent.js",
     "db:gaps": "node pg/view_missing_intervals.js",
     "electric:reprice": "node pg/reprice_historical_electric.js",
-    "usage:reprice": "node pg/reprice_historical_usage.js"
+    "usage:reprice": "node pg/reprice_historical_usage.js",
+    "gaps:import": "node pg/import_missing_intervals.js"
   },
   "author": "",
   "license": "ISC",

@@ -79,6 +79,7 @@ No. It is a manual backfill helper, not a scheduler entrypoint. It is useful whe
 - `npm run charge:price:auto` → process all charge events.
 - `npm run charge:price:next` → process next unpriced charge event.
 - `npm run db:gaps -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 200]`.
+- `npm run gaps:import -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 10000] [--max-ranges 200] [--dry-run]`.
 - `npm run electric:reprice -- --start <iso> --end <iso> [--dry-run]`.
 - `npm run usage:reprice -- --start <iso> --end <iso> [--source electric|gas|both] [--dry-run]`.
 
@@ -90,6 +91,15 @@ npm run db:gaps -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --sou
 
 This checks expected 30-minute intervals and reports missing ranges for `electric_consumption`, `gas_consumption`, or both.
 
+
+
+## Import missing intervals
+Use:
+```bash
+npm run gaps:import -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --source both --max-ranges 50 --dry-run
+```
+
+This reads missing ranges from the DB gap check and re-runs the Octopus fetch/process/insert pipeline for each range. Remove `--dry-run` to write data.
 
 ## Reprice historical usage
 Use:
