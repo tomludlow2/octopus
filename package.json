@@ -12,7 +12,8 @@
     "charge:identify:backfill": "node lib/invokeAudiProcessor.js",
     "charge:price:auto": "node lib/autoPriceChargeEvents.js",
     "charge:price:next": "node lib/invokePriceChargeEvent.js",
-    "db:gaps": "node pg/view_missing_intervals.js"
+    "db:gaps": "node pg/view_missing_intervals.js",
+    "electric:reprice": "node pg/reprice_historical_electric.js"
   },
   "author": "",
   "license": "ISC",

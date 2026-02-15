@@ -50,3 +50,8 @@ Not for normal automation. It is a manual historical backfill tool. The main aut
 ```bash
 node pg/view_missing_intervals.js --start 2024-12-01T00:00:00Z --end 2024-12-03T00:00:00Z --source both --limit 200
 ```
+
+
+## Historical electric repricing
+- Use `pg/reprice_historical_electric.js` to recalculate `electric_consumption.price_pence` from Octopus unit rates valid at each interval timestamp.
+- Supports `--dry-run` for auditing before writing updates.

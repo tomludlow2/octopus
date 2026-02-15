@@ -78,6 +78,7 @@ No. It is a manual backfill helper, not a scheduler entrypoint. It is useful whe
 - `npm run charge:price:auto` → process all charge events.
 - `npm run charge:price:next` → process next unpriced charge event.
 - `npm run db:gaps -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 200]`.
+- `npm run electric:reprice -- --start <iso> --end <iso> [--dry-run]`.
 
 ## Finding missing periods in DB records
 Use:
@@ -86,6 +87,15 @@ npm run db:gaps -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --sou
 ```
 
 This checks expected 30-minute intervals and reports missing ranges for `electric_consumption`, `gas_consumption`, or both.
+
+
+## Reprice historical electric usage
+Use:
+```bash
+npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:00Z --dry-run
+```
+
+This replays pricing for rows in `electric_consumption` by matching each interval timestamp to the Octopus unit rate valid at that time. Remove `--dry-run` to persist updates.
 
 ## Notes
 - Octopus billing calculations can differ slightly from API output due to rounding and VAT handling.
