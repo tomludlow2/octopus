@@ -120,16 +120,18 @@ npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:
 
 
 ## How it works (Postgres as source of truth)
-- Importing now runs through `lib/octopusImporter.js`, which:
-  - checks missing half-hour intervals in `electric_consumption` and `gas_consumption`,
-  - fetches Octopus consumption only for missing ranges,
-  - fetches rate intervals for the requested period plus a retrospective backfill window (`OCTOPUS_BACKFILL_DAYS`, default `14`) to catch late Octopus corrections,
-  - upserts interval rates into `octopus_rate_intervals` and consumption into fuel usage tables.
-- Retrospective rate changes are detected by comparing stored vs fetched interval values/source hashes and written to `octopus_rate_change_audit`.
-- If the DB user cannot create schema objects (e.g. no `CREATE` on `public`), importer automatically falls back to the legacy ingestion path so existing installs keep working while you arrange migration privileges.
+- Importing runs through `lib/octopusImporter.js` and writes only to existing tables:
+  - `electric_consumption`
+  - `gas_consumption`
+  - (existing standing charge handling remains in legacy scripts)
+- Import logic:
+  - detects missing half-hour intervals in the existing consumption tables,
+  - fetches Octopus usage for missing intervals,
+  - always refreshes a retrospective backfill window (`OCTOPUS_BACKFILL_DAYS`, default `14`) so late Octopus corrections are actioned by updating existing rows,
+  - upserts into existing consumption tables using `ON CONFLICT (start_time)`.
 - Activity logs are written to `./logs/activity-YYYY-MM-DD.log` (append-only, one line per operation).
 - Use web endpoint `/logs?date=YYYY-MM-DD&lines=500` to inspect activity logs.
-- New graph views:
+- Graph views:
   - `/view-electric?range=day|week|month&date=YYYY-MM-DD`
   - `/view-gas?range=day|week|month&date=YYYY-MM-DD`
 
@@ -139,11 +141,10 @@ Run the same import twice for the same period:
 npm run fetch:auto
 npm run fetch:auto
 ```
-Then verify row counts don't balloon and rate changes are audited only when values differ:
+Then verify row counts stay stable:
 ```bash
 psql -d octopus_db -c "SELECT COUNT(*) FROM electric_consumption;"
 psql -d octopus_db -c "SELECT COUNT(*) FROM gas_consumption;"
-psql -d octopus_db -c "SELECT COUNT(*) FROM octopus_rate_change_audit;"
 ```
 
 
