@@ -4,7 +4,8 @@ const path = require('path');
 const { format } = require('date-fns'); // You may need to install date-fns
 
 // Load sensitive database connection data
-const dbConfig = JSON.parse(fs.readFileSync('../db_connect.json', 'utf8'));
+const { loadDbConfig } = require('../lib/loadDbConfig');
+const dbConfig = loadDbConfig();
 
 // Function to export audi_events to CSV
 async function exportAudiEventsToCSV() {

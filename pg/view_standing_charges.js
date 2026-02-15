@@ -1,8 +1,7 @@
-const fs = require('fs');
 const { Client } = require('pg');
+const { loadDbConfig } = require('../lib/loadDbConfig');
 
-// Load database connection details from JSON file
-const dbConfig = JSON.parse(fs.readFileSync('../db_connect.json', 'utf8'));
+const dbConfig = loadDbConfig();
 
 // Function to fetch and display standing charges
 async function fetchStandingCharges() {
