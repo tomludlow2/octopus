@@ -80,7 +80,6 @@ No. It is a manual backfill helper, not a scheduler entrypoint. It is useful whe
 - `npm run charge:price:next` → process next unpriced charge event.
 - `npm run db:gaps -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 200]`.
 - `npm run gaps:import -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 10000] [--max-ranges 200] [--dry-run]`.
-- `npm run electric:reprice -- --start <iso> --end <iso> [--dry-run]`.
 - `npm run usage:reprice -- --start <iso> --end <iso> [--source electric|gas|both] [--dry-run]`.
 
 ## Finding missing periods in DB records
@@ -88,20 +87,18 @@ Use:
 ```bash
 npm run db:gaps -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --source both --limit 200
 ```
-
 This checks expected 30-minute intervals and reports missing ranges for `electric_consumption`, `gas_consumption`, or both.
-
-
 
 ## Import missing intervals
 Use:
 ```bash
 npm run gaps:import -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --source both --max-ranges 50 --dry-run
 ```
-
 This reads missing ranges from the DB gap check and re-runs the Octopus fetch/process/insert pipeline for each range. Remove `--dry-run` to write data.
+This will override the data, it doesn't currently check for existing data. Probably safest to keep this in for now. 
 
-## Reprice historical usage
+## Reprice historical usage]
+This only becomes useful if there is a retrospective change in the tariff information. For example if the tariff changes and the system fails to recognise this, you would use this go and "re-price" all of the units of energy through that time. 
 Use:
 ```bash
 npm run usage:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:00Z --source both --dry-run
@@ -130,7 +127,7 @@ npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:
   - always refreshes a retrospective backfill window (`OCTOPUS_BACKFILL_DAYS`, default `14`) so late Octopus corrections are actioned by updating existing rows,
   - upserts into existing consumption tables using `ON CONFLICT (start_time)`.
 - Activity logs are written to `./logs/activity-YYYY-MM-DD.log` (append-only, one line per operation).
-- Use web endpoint `/logs?date=YYYY-MM-DD&lines=500` to inspect activity logs.
+- Use web endpoint `http://remote_ip:52529/logs?date=YYYY-MM-DD&lines=500` to inspect activity logs.
 - Graph views:
   - `/view-electric?range=day|week|month&date=YYYY-MM-DD`
   - `/view-gas?range=day|week|month&date=YYYY-MM-DD`
@@ -149,6 +146,7 @@ psql -d octopus_db -c "SELECT COUNT(*) FROM gas_consumption;"
 
 
 ### Inspect schema/tables/permissions (for adapting to your DB role)
+This is only useful if there are some database permission / schema issues - you can export the current table schema
 Use:
 ```bash
 npm run db:inspect
@@ -164,7 +162,7 @@ npm run fetch:monthly:interactive -- --start-month 2024-11 --max-months 12
 ```
 
 Behavior:
-- Starts from `--start-month` when provided, otherwise current month, then walks backwards month-by-month.
+- Starts from the --start-month and walks backwards month-by-month.
 - Prompts for each month: import (`Y`), skip (`N`), or quit (`Q`).
 - After each import it prints inserted/updated counts for electric and gas.
 - Writes a month-by-month JSON report to `./reports/monthly_import_<timestamp>.json`.
