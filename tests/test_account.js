@@ -12,6 +12,7 @@ const apiKey = config.api_key;
 
 // Set up the URL
 const url = `https://api.octopus.energy/v1/accounts/${acc_num}/`;
+console.log(url);
 
 // Perform the request
 axios.get(url, {
@@ -34,11 +35,13 @@ function extract_tariff_information(data) {
   const property = data.properties[0]; // Assuming you want the first property
 
   // Extract electricity tariff code with valid_to: null
+  console.log(property.electricity_meter_points[0].agreements);
   const electricityTariff = property.electricity_meter_points[0].agreements.find(
     (agreement) => agreement.valid_to === null
   );
 
   // Extract gas tariff code with valid_to: null
+  console.log(property.gas_meter_points[0].agreements);
   const gasTariff = property.gas_meter_points[0].agreements.find(
     (agreement) => agreement.valid_to === null
   );
