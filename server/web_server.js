@@ -3,6 +3,7 @@ const fs = require('fs');
 const { Client } = require('pg');
 const path = require('path');
 const crypto = require('crypto');
+const XLSX = require('xlsx');
 
 const { loadDbConfig } = require('../lib/loadDbConfig');
 const dbConfig = loadDbConfig();
@@ -143,7 +144,7 @@ app.get('/login', (req, res) => {
     const next = typeof req.query.next === 'string' && req.query.next.startsWith('/') ? req.query.next : '/view-electric';
     const errorMessage = req.query.error ? '<div class="alert alert-danger">Invalid username or password.</div>' : '';
 
-    res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Octopus Web Login</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body class="bg-light"><div class="container py-5"><div class="row justify-content-center"><div class="col-md-5"><div class="card shadow-sm"><div class="card-body"><h1 class="h4 mb-3">Octopus Web Login</h1>${errorMessage}<form method="POST" action="/login"><input type="hidden" name="next" value="${escapeHtml(next)}" /><div class="mb-3"><label class="form-label" for="username">Username</label><input class="form-control" id="username" name="username" required autocomplete="username" /></div><div class="mb-3"><label class="form-label" for="password">Password</label><input class="form-control" id="password" type="password" name="password" required autocomplete="current-password" /></div><button class="btn btn-primary w-100" type="submit">Sign in</button></form></div></div></div></div></div></body></html>`);
+    res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Octopus Web Login</title><link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet" /></head><body class="bg-light"><div class="container py-5"><div class="row justify-content-center"><div class="col-md-5"><div class="card shadow-sm"><div class="card-body"><h1 class="h4 mb-3">Octopus Web Login</h1>${errorMessage}<form method="POST" action="/login"><input type="hidden" name="next" value="${escapeHtml(next)}" /><div class="mb-3"><label class="form-label" for="username">Username</label><input class="form-control" id="username" name="username" required autocomplete="username" /></div><div class="mb-3"><label class="form-label" for="password">Password</label><input class="form-control" id="password" type="password" name="password" required autocomplete="current-password" /></div><button class="btn btn-primary w-100" type="submit">Sign in</button></form></div></div></div></div></div></body></html>`);
 });
 
 app.post('/login', (req, res) => {
@@ -167,7 +168,7 @@ app.post('/logout', (req, res) => {
 });
 
 app.use((req, res, next) => {
-    if (req.path === '/login' || req.path === '/logout' || req.path.startsWith('/vendor/chart.js')) {
+    if (req.path === '/login' || req.path === '/logout' || req.path.startsWith('/vendor/') || req.path.startsWith('/public/')) {
         next();
         return;
     }
@@ -206,98 +207,631 @@ app.get('/logs', (req, res) => {
         message = `No activity log found for ${date}.`;
     }
 
-    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Activity Logs</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body><div class="container mt-4"><h1>Activity Logs</h1><form class="row g-2 mb-3" method="GET"><div class="col-md-3"><input class="form-control" type="date" name="date" value="${date}" /></div><div class="col-md-3"><input class="form-control" type="number" name="lines" value="${safeLineLimit}" min="1" max="5000" /></div><div class="col-md-2"><button class="btn btn-primary" type="submit">Load</button></div></form>${message ? `<div class="alert alert-info">${message}</div>` : ''}<pre class="bg-light p-3 border rounded" style="white-space: pre-wrap;">${lines.join('\n')}</pre></div></body></html>`);
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Activity Logs</title><link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet" /></head><body><div class="container mt-4"><h1>Activity Logs</h1><form class="row g-2 mb-3" method="GET"><div class="col-md-3"><input class="form-control" type="date" name="date" value="${date}" /></div><div class="col-md-3"><input class="form-control" type="number" name="lines" value="${safeLineLimit}" min="1" max="5000" /></div><div class="col-md-2"><button class="btn btn-primary" type="submit">Load</button></div></form>${message ? `<div class="alert alert-info">${message}</div>` : ''}<pre class="bg-light p-3 border rounded" style="white-space: pre-wrap;">${lines.join('\n')}</pre></div></body></html>`);
 });
 
 
 app.use('/vendor/chart.js', express.static(path.join(__dirname, '../node_modules/chart.js/dist')));
+app.use('/vendor/bootstrap', express.static(path.join(__dirname, '../node_modules/bootstrap/dist')));
+app.use('/public', express.static(path.join(__dirname, '../public')));
 
-function parseRangeQuery(query) {
-    const range = ['day', 'week', 'month'].includes(query.range) ? query.range : 'day';
-    const date = query.date ? new Date(`${query.date}T00:00:00Z`) : new Date();
+function parseUsageQuery(query) {
+    const view = ['day', 'week', 'month'].includes(query.view) ? query.view : 'day';
+    const date = typeof query.date === 'string' && query.date ? query.date : new Date().toISOString().slice(0, 10);
+    const month = typeof query.month === 'string' && /^\d{4}-\d{2}$/.test(query.month)
+        ? query.month
+        : date.slice(0, 7);
 
-    if (Number.isNaN(date.getTime())) {
-        throw new Error('Invalid date query. Expected YYYY-MM-DD');
-    }
-
-    const start = new Date(date);
-    const end = new Date(date);
-
-    if (range === 'day') {
-        end.setUTCDate(end.getUTCDate() + 1);
-    } else if (range === 'week') {
-        const day = (start.getUTCDay() + 6) % 7;
-        start.setUTCDate(start.getUTCDate() - day);
-        end.setTime(start.getTime());
-        end.setUTCDate(end.getUTCDate() + 7);
-    } else {
-        start.setUTCDate(1);
-        end.setUTCMonth(start.getUTCMonth() + 1);
-        end.setUTCDate(1);
-    }
-
-    return { range, date: date.toISOString().slice(0, 10), startIso: start.toISOString(), endIso: end.toISOString() };
+    return {
+        view,
+        date,
+        month,
+        includeTypical: query.includeTypical === '1' || query.includeTypical === 'true',
+        includeLast: query.includeLast === '1' || query.includeLast === 'true'
+    };
 }
 
-async function fetchEnergySeries(client, fuel, startIso, endIso, range) {
-    const table = fuel === 'electric' ? 'electric_consumption' : 'gas_consumption';
+function fuelTable(fuel) {
+    return fuel === 'electric' ? 'electric_consumption' : 'gas_consumption';
+}
 
-    if (range === 'day') {
+async function fetchUsageBuckets(client, table, view, date, month) {
+    if (view === 'day') {
         const result = await client.query(
-            `SELECT start_time AS label, consumption_kwh::float AS kwh FROM ${table} WHERE start_time >= $1 AND start_time < $2 ORDER BY start_time`,
-            [startIso, endIso]
+            `WITH bounds AS (
+                SELECT
+                    ($1::date::timestamp AT TIME ZONE 'Europe/London') AS start_utc,
+                    (($1::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/London') AS end_utc
+            ),
+            agg AS (
+                SELECT
+                    EXTRACT(HOUR FROM (start_time AT TIME ZONE 'Europe/London'))::int AS hour_idx,
+                    SUM(consumption_kwh)::float AS kwh,
+                    SUM(COALESCE(price_pence, 0))::float / 100.0 AS cost_gbp
+                FROM ${table}, bounds
+                WHERE start_time >= bounds.start_utc
+                  AND start_time < bounds.end_utc
+                GROUP BY hour_idx
+            )
+            SELECT
+                gs.hour_idx,
+                TO_CHAR(($1::date + MAKE_INTERVAL(hours => gs.hour_idx)), 'YYYY-MM-DD\"T\"HH24:MI:SS') AS bucket_start,
+                TO_CHAR(($1::date + MAKE_INTERVAL(hours => gs.hour_idx + 1)), 'YYYY-MM-DD\"T\"HH24:MI:SS') AS bucket_end,
+                COALESCE(agg.kwh, 0)::float AS kwh,
+                COALESCE(agg.cost_gbp, 0)::float AS cost_gbp
+            FROM GENERATE_SERIES(0, 23) AS gs(hour_idx)
+            LEFT JOIN agg ON agg.hour_idx = gs.hour_idx
+            ORDER BY gs.hour_idx`,
+            [date]
+        );
+        return result.rows;
+    }
+
+    if (view === 'week') {
+        const result = await client.query(
+            `WITH week_bounds AS (
+                SELECT
+                    (DATE_TRUNC('week', $1::date::timestamp))::date AS week_start
+            ),
+            days AS (
+                SELECT
+                    gs.day_idx,
+                    (wb.week_start + MAKE_INTERVAL(days => gs.day_idx))::date AS local_day
+                FROM week_bounds wb
+                CROSS JOIN GENERATE_SERIES(0, 6) AS gs(day_idx)
+            ),
+            agg AS (
+                SELECT
+                    (start_time AT TIME ZONE 'Europe/London')::date AS local_day,
+                    SUM(consumption_kwh)::float AS kwh,
+                    SUM(COALESCE(price_pence, 0))::float / 100.0 AS cost_gbp
+                FROM ${table}, week_bounds
+                WHERE (start_time AT TIME ZONE 'Europe/London')::date >= week_bounds.week_start
+                  AND (start_time AT TIME ZONE 'Europe/London')::date < (week_bounds.week_start + INTERVAL '7 day')
+                GROUP BY (start_time AT TIME ZONE 'Europe/London')::date
+            )
+            SELECT
+                days.day_idx,
+                TO_CHAR(days.local_day::timestamp, 'YYYY-MM-DD\"T\"HH24:MI:SS') AS bucket_start,
+                TO_CHAR((days.local_day::timestamp + INTERVAL '1 day'), 'YYYY-MM-DD\"T\"HH24:MI:SS') AS bucket_end,
+                COALESCE(agg.kwh, 0)::float AS kwh,
+                COALESCE(agg.cost_gbp, 0)::float AS cost_gbp
+            FROM days
+            LEFT JOIN agg ON agg.local_day = days.local_day
+            ORDER BY days.day_idx`,
+            [date]
         );
         return result.rows;
     }
 
     const result = await client.query(
-        `SELECT DATE_TRUNC('day', start_time) AS label, SUM(consumption_kwh)::float AS kwh FROM ${table} WHERE start_time >= $1 AND start_time < $2 GROUP BY DATE_TRUNC('day', start_time) ORDER BY DATE_TRUNC('day', start_time)`,
-        [startIso, endIso]
+        `WITH month_bounds AS (
+            SELECT
+                TO_DATE($1 || '-01', 'YYYY-MM-DD')::date AS month_start,
+                (TO_DATE($1 || '-01', 'YYYY-MM-DD') + INTERVAL '1 month')::date AS month_end
+        ),
+        days AS (
+            SELECT
+                ROW_NUMBER() OVER () - 1 AS day_idx,
+                gs::date AS local_day
+            FROM month_bounds mb
+            CROSS JOIN GENERATE_SERIES(mb.month_start, mb.month_end - INTERVAL '1 day', INTERVAL '1 day') gs
+        ),
+        agg AS (
+            SELECT
+                (start_time AT TIME ZONE 'Europe/London')::date AS local_day,
+                SUM(consumption_kwh)::float AS kwh,
+                SUM(COALESCE(price_pence, 0))::float / 100.0 AS cost_gbp
+            FROM ${table}, month_bounds
+            WHERE (start_time AT TIME ZONE 'Europe/London')::date >= month_bounds.month_start
+              AND (start_time AT TIME ZONE 'Europe/London')::date < month_bounds.month_end
+            GROUP BY (start_time AT TIME ZONE 'Europe/London')::date
+        )
+        SELECT
+            days.day_idx,
+            TO_CHAR(days.local_day::timestamp, 'YYYY-MM-DD\"T\"HH24:MI:SS') AS bucket_start,
+            TO_CHAR((days.local_day::timestamp + INTERVAL '1 day'), 'YYYY-MM-DD\"T\"HH24:MI:SS') AS bucket_end,
+            COALESCE(agg.kwh, 0)::float AS kwh,
+            COALESCE(agg.cost_gbp, 0)::float AS cost_gbp
+        FROM days
+        LEFT JOIN agg ON agg.local_day = days.local_day
+        ORDER BY days.local_day`,
+        [month]
     );
-
     return result.rows;
 }
 
-async function fetchUsageRows(client, fuel, startIso, endIso) {
-    const table = fuel === 'electric' ? 'electric_consumption' : 'gas_consumption';
+async function fetchTypicalBuckets(client, table, view, date, month) {
+    if (view === 'day') {
+        const countResult = await client.query(
+            `SELECT COUNT(*)::int AS days_with_data
+             FROM (
+                SELECT DISTINCT (start_time AT TIME ZONE 'Europe/London')::date AS local_day
+                FROM ${table}
+                WHERE (start_time AT TIME ZONE 'Europe/London')::date IN (
+                    SELECT ($1::date - (n * INTERVAL '1 week'))::date
+                    FROM GENERATE_SERIES(1, 8) AS n
+                )
+             ) x`,
+            [date]
+        );
+        const weekCount = countResult.rows[0].days_with_data >= 4 ? 8 : 4;
+
+        const result = await client.query(
+            `WITH sample_days AS (
+                SELECT ($1::date - (n * INTERVAL '1 week'))::date AS local_day
+                FROM GENERATE_SERIES(1, $2) AS n
+            ),
+            hours AS (
+                SELECT GENERATE_SERIES(0, 23) AS hour_idx
+            ),
+            day_hour_grid AS (
+                SELECT sample_days.local_day, hours.hour_idx
+                FROM sample_days CROSS JOIN hours
+            ),
+            actual AS (
+                SELECT
+                    (start_time AT TIME ZONE 'Europe/London')::date AS local_day,
+                    EXTRACT(HOUR FROM (start_time AT TIME ZONE 'Europe/London'))::int AS hour_idx,
+                    SUM(consumption_kwh)::float AS kwh,
+                    SUM(COALESCE(price_pence,0))::float/100.0 AS cost_gbp
+                FROM ${table}
+                WHERE (start_time AT TIME ZONE 'Europe/London')::date IN (SELECT local_day FROM sample_days)
+                GROUP BY 1,2
+            )
+            SELECT
+                dhg.hour_idx,
+                AVG(COALESCE(actual.kwh,0))::float AS typical_kwh,
+                AVG(COALESCE(actual.cost_gbp,0))::float AS typical_cost_gbp
+            FROM day_hour_grid dhg
+            LEFT JOIN actual ON actual.local_day = dhg.local_day AND actual.hour_idx = dhg.hour_idx
+            GROUP BY dhg.hour_idx
+            ORDER BY dhg.hour_idx`,
+            [date, weekCount]
+        );
+        return result.rows;
+    }
+
+    if (view === 'week') {
+        const result = await client.query(
+            `WITH base_week AS (
+                SELECT DATE_TRUNC('week', $1::date::timestamp)::date AS week_start
+            ),
+            sample_weeks AS (
+                SELECT (base_week.week_start - (n * INTERVAL '1 week'))::date AS sample_week_start
+                FROM base_week, GENERATE_SERIES(1, 8) AS n
+            ),
+            weekdays AS (
+                SELECT GENERATE_SERIES(0, 6) AS day_idx
+            ),
+            grid AS (
+                SELECT sample_weeks.sample_week_start, weekdays.day_idx,
+                       (sample_weeks.sample_week_start + MAKE_INTERVAL(days => weekdays.day_idx))::date AS local_day
+                FROM sample_weeks CROSS JOIN weekdays
+            ),
+            actual AS (
+                SELECT
+                    DATE_TRUNC('week', (start_time AT TIME ZONE 'Europe/London'))::date AS week_start,
+                    EXTRACT(ISODOW FROM (start_time AT TIME ZONE 'Europe/London'))::int - 1 AS day_idx,
+                    SUM(consumption_kwh)::float AS kwh,
+                    SUM(COALESCE(price_pence,0))::float/100.0 AS cost_gbp
+                FROM ${table}, base_week
+                WHERE (start_time AT TIME ZONE 'Europe/London')::date >= (base_week.week_start - INTERVAL '8 week')
+                  AND (start_time AT TIME ZONE 'Europe/London')::date < base_week.week_start
+                GROUP BY 1,2
+            )
+            SELECT
+                weekdays.day_idx,
+                AVG(COALESCE(actual.kwh,0))::float AS typical_kwh,
+                AVG(COALESCE(actual.cost_gbp,0))::float AS typical_cost_gbp
+            FROM weekdays
+            LEFT JOIN actual ON actual.day_idx = weekdays.day_idx
+            GROUP BY weekdays.day_idx
+            ORDER BY weekdays.day_idx`,
+            [date]
+        );
+        return result.rows;
+    }
+
     const result = await client.query(
-        `SELECT consumption_kwh, price_pence, start_time, end_time FROM ${table} WHERE start_time >= $1 AND start_time < $2 ORDER BY start_time LIMIT 1000`,
-        [startIso, endIso]
+        `WITH month_input AS (
+            SELECT TO_DATE($1 || '-01','YYYY-MM-DD')::date AS month_start
+        ),
+        same_month_years AS (
+            SELECT
+                EXTRACT(YEAR FROM (start_time AT TIME ZONE 'Europe/London'))::int AS yyyy,
+                EXTRACT(DAY FROM (start_time AT TIME ZONE 'Europe/London'))::int AS day_of_month,
+                SUM(consumption_kwh)::float AS kwh,
+                SUM(COALESCE(price_pence,0))::float/100.0 AS cost_gbp
+            FROM ${table}, month_input
+            WHERE EXTRACT(MONTH FROM (start_time AT TIME ZONE 'Europe/London')) = EXTRACT(MONTH FROM month_input.month_start)
+              AND EXTRACT(YEAR FROM (start_time AT TIME ZONE 'Europe/London')) < EXTRACT(YEAR FROM month_input.month_start)
+            GROUP BY 1,2
+        ),
+        month_days AS (
+            SELECT GENERATE_SERIES(1, EXTRACT(DAY FROM ((DATE_TRUNC('month', month_start) + INTERVAL '1 month - 1 day'))::date)::int) AS day_of_month
+            FROM month_input
+        ),
+        same_month_agg AS (
+            SELECT
+                month_days.day_of_month,
+                AVG(COALESCE(smy.kwh,0))::float AS typical_kwh,
+                AVG(COALESCE(smy.cost_gbp,0))::float AS typical_cost_gbp,
+                COUNT(DISTINCT smy.yyyy)::int AS sample_years
+            FROM month_days
+            LEFT JOIN same_month_years smy ON smy.day_of_month = month_days.day_of_month
+            GROUP BY month_days.day_of_month
+        ),
+        fallback AS (
+            SELECT
+                EXTRACT(DAY FROM (start_time AT TIME ZONE 'Europe/London'))::int AS day_of_month,
+                AVG(day_totals.kwh)::float AS typical_kwh,
+                AVG(day_totals.cost_gbp)::float AS typical_cost_gbp
+            FROM (
+                SELECT
+                    (start_time AT TIME ZONE 'Europe/London')::date AS local_day,
+                    SUM(consumption_kwh)::float AS kwh,
+                    SUM(COALESCE(price_pence,0))::float/100.0 AS cost_gbp
+                FROM ${table}, month_input
+                WHERE (start_time AT TIME ZONE 'Europe/London')::date >= (month_input.month_start - INTERVAL '3 month')
+                  AND (start_time AT TIME ZONE 'Europe/London')::date < month_input.month_start
+                GROUP BY 1
+            ) AS day_totals
+            GROUP BY EXTRACT(DAY FROM local_day)
+        ),
+        sample_check AS (
+            SELECT COALESCE(MAX(sample_years),0) AS sample_years FROM same_month_agg
+        )
+        SELECT
+            md.day_of_month - 1 AS day_idx,
+            CASE WHEN sc.sample_years > 0 THEN COALESCE(sma.typical_kwh,0) ELSE COALESCE(f.typical_kwh,0) END::float AS typical_kwh,
+            CASE WHEN sc.sample_years > 0 THEN COALESCE(sma.typical_cost_gbp,0) ELSE COALESCE(f.typical_cost_gbp,0) END::float AS typical_cost_gbp
+        FROM (
+            SELECT GENERATE_SERIES(1, EXTRACT(DAY FROM ((DATE_TRUNC('month', month_start) + INTERVAL '1 month - 1 day'))::date)::int) AS day_of_month
+            FROM month_input
+        ) md
+        CROSS JOIN sample_check sc
+        LEFT JOIN same_month_agg sma ON sma.day_of_month = md.day_of_month
+        LEFT JOIN fallback f ON f.day_of_month = md.day_of_month
+        ORDER BY md.day_of_month`,
+        [month]
     );
-
     return result.rows;
 }
 
-function renderEnergyView({ fuel, range, date, rows, series }) {
-    const title = fuel === 'electric' ? 'Electric Consumption Data' : 'Gas Consumption Data';
-    const basePath = `/view-${fuel}`;
-    const labels = series.map((item) => new Date(item.label).toISOString());
-    const values = series.map((item) => Number(item.kwh));
+function mergeOverlays(rows, typicalRows, lastRows) {
+    const byIdx = (arr, key) => new Map(arr.map((r) => [Number(r[key] ?? r.day_idx ?? r.hour_idx), r]));
+    const typicalMap = byIdx(typicalRows || [], 'hour_idx');
+    const lastMap = byIdx(lastRows || [], 'hour_idx');
 
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${title}</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body><div class="container mt-4"><h1>${title}</h1><div class="d-flex gap-2 mb-3"><a class="btn ${range === 'day' ? 'btn-primary' : 'btn-outline-primary'}" href="${basePath}?range=day&date=${date}">Day</a><a class="btn ${range === 'week' ? 'btn-primary' : 'btn-outline-primary'}" href="${basePath}?range=week&date=${date}">Week</a><a class="btn ${range === 'month' ? 'btn-primary' : 'btn-outline-primary'}" href="${basePath}?range=month&date=${date}">Month</a></div><form method="GET" class="row g-2 mb-4"><input type="hidden" name="range" value="${range}" /><div class="col-md-3"><input class="form-control" type="date" name="date" value="${date}" /></div><div class="col-md-2"><button class="btn btn-secondary" type="submit">Go</button></div></form><canvas id="usageChart" height="100"></canvas><table class="table table-bordered table-hover mt-4"><thead><tr><th>Consumption (kWh)</th><th>Price (pence)</th><th>Start Time</th><th>End Time</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${Number(row.consumption_kwh).toFixed(3)}</td><td>${Number(row.price_pence || 0).toFixed(2)}</td><td>${new Date(row.start_time).toLocaleString()}</td><td>${new Date(row.end_time).toLocaleString()}</td></tr>`).join('')}</tbody></table></div><script src="/vendor/chart.js/chart.umd.js"></script><script>new Chart(document.getElementById('usageChart'),{type:'${range === 'day' ? 'bar' : 'line'}',data:{labels:${JSON.stringify(labels)},datasets:[{label:'kWh',data:${JSON.stringify(values)},borderColor:'#1f77b4',backgroundColor:'rgba(31,119,180,0.35)'}]},options:{responsive:true,scales:{y:{beginAtZero:true}}}});</script></body></html>`;
+    return rows.map((row, idx) => {
+        const t = typicalMap.get(idx) || typicalMap.get(Number(row.day_idx)) || {};
+        const l = lastMap.get(idx) || lastMap.get(Number(row.day_idx)) || {};
+        return {
+            bucket_start: row.bucket_start,
+            bucket_end: row.bucket_end,
+            kwh: Number(row.kwh || 0),
+            cost_gbp: Number(row.cost_gbp || 0),
+            typical_kwh: t.typical_kwh !== undefined ? Number(t.typical_kwh || 0) : null,
+            typical_cost_gbp: t.typical_cost_gbp !== undefined ? Number(t.typical_cost_gbp || 0) : null,
+            last_period_kwh: l.kwh !== undefined ? Number(l.kwh || 0) : null,
+            last_period_cost_gbp: l.cost_gbp !== undefined ? Number(l.cost_gbp || 0) : null
+        };
+    });
 }
 
-async function handleEnergyView(req, res, fuel) {
+function sumField(rows, field) {
+    return rows.reduce((acc, r) => acc + Number(r[field] || 0), 0);
+}
+
+function buildUsageMetadata(fuel, query, rows) {
+    return {
+        fuel,
+        view: query.view,
+        date: query.date,
+        month: query.month,
+        includeTypical: query.includeTypical,
+        includeLast: query.includeLast,
+        rangeStart: rows[0]?.bucket_start || null,
+        rangeEnd: rows[rows.length - 1]?.bucket_end || null,
+        createdAt: new Date().toISOString(),
+        timezone: 'Europe/London'
+    };
+}
+
+async function getUsagePayload(client, fuel, query) {
+    const table = fuelTable(fuel);
+    const rows = await fetchUsageBuckets(client, table, query.view, query.date, query.month);
+
+    let typicalRows = [];
+    if (query.includeTypical) {
+        typicalRows = await fetchTypicalBuckets(client, table, query.view, query.date, query.month);
+    }
+
+    let lastRows = [];
+    if (query.includeLast) {
+        if (query.view === 'day') {
+            const lastDate = await client.query(`SELECT ($1::date - INTERVAL '7 day')::date::text AS d`, [query.date]);
+            lastRows = await fetchUsageBuckets(client, table, 'day', lastDate.rows[0].d, query.month);
+        } else if (query.view === 'week') {
+            const lastWeekDate = await client.query(`SELECT ($1::date - INTERVAL '7 day')::date::text AS d`, [query.date]);
+            lastRows = await fetchUsageBuckets(client, table, 'week', lastWeekDate.rows[0].d, query.month);
+        } else {
+            const parts = query.month.split('-');
+            const d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 2, 1));
+            const lastMonth = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+            lastRows = await fetchUsageBuckets(client, table, 'month', query.date, lastMonth);
+        }
+    }
+
+    const mergedRows = mergeOverlays(rows, typicalRows, lastRows);
+    const totals = {
+        kwh: sumField(mergedRows, 'kwh'),
+        cost_gbp: sumField(mergedRows, 'cost_gbp'),
+        typical_kwh: query.includeTypical ? sumField(mergedRows, 'typical_kwh') : null,
+        typical_cost_gbp: query.includeTypical ? sumField(mergedRows, 'typical_cost_gbp') : null,
+        last_period_kwh: query.includeLast ? sumField(mergedRows, 'last_period_kwh') : null,
+        last_period_cost_gbp: query.includeLast ? sumField(mergedRows, 'last_period_cost_gbp') : null
+    };
+
+    return {
+        metadata: buildUsageMetadata(fuel, query, mergedRows),
+        totals,
+        rows: mergedRows
+    };
+}
+
+function csvEscape(value) {
+    const text = value === null || value === undefined ? '' : String(value);
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsv(payload) {
+    const lines = [];
+    const m = payload.metadata;
+    lines.push(`fuel,${csvEscape(m.fuel)}`);
+    lines.push(`view,${csvEscape(m.view)}`);
+    lines.push(`date,${csvEscape(m.date)}`);
+    lines.push(`month,${csvEscape(m.month)}`);
+    lines.push(`range_start,${csvEscape(m.rangeStart)}`);
+    lines.push(`range_end,${csvEscape(m.rangeEnd)}`);
+    lines.push(`created_at,${csvEscape(m.createdAt)}`);
+    lines.push('');
+    lines.push('bucket_start,bucket_end,kwh,cost_gbp,typical_kwh,typical_cost_gbp,last_period_kwh,last_period_cost_gbp');
+    payload.rows.forEach((row) => {
+        lines.push([
+            row.bucket_start,
+            row.bucket_end,
+            row.kwh,
+            row.cost_gbp,
+            row.typical_kwh,
+            row.typical_cost_gbp,
+            row.last_period_kwh,
+            row.last_period_cost_gbp
+        ].map(csvEscape).join(','));
+    });
+    return lines.join('\n');
+}
+
+function renderUsageDashboardPage(fuel) {
+    const title = fuel === 'electric' ? 'Electric Usage Dashboard' : 'Gas Usage Dashboard';
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <link rel="stylesheet" href="/vendor/bootstrap/css/bootstrap.min.css" />
+    <style>
+        body { background: #f4f6fa; }
+        .summary-card { border: 0; box-shadow: 0 0.125rem 0.5rem rgba(0,0,0,.08); }
+        .table-wrap { overflow-x:auto; }
+    </style>
+</head>
+<body>
+    <main class="container-fluid px-3 px-md-4 py-4" data-fuel="${fuel}" id="usage-dashboard-root">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+            <h1 class="h3 mb-2 mb-md-0">${title}</h1>
+            <div class="btn-group" role="group">
+                <a class="btn btn-outline-secondary" href="/view-electric">Electric</a>
+                <a class="btn btn-outline-secondary" href="/view-gas">Gas</a>
+            </div>
+        </div>
+
+        <section class="card mb-3">
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">View</label>
+                        <div class="btn-group w-100" role="group" id="viewModeGroup">
+                            <button class="btn btn-primary" data-view="day">Day</button>
+                            <button class="btn btn-outline-primary" data-view="week">Week</button>
+                            <button class="btn btn-outline-primary" data-view="month">Month</button>
+                        </div>
+                    </div>
+                    <div class="col-8 col-md-3">
+                        <label class="form-label" for="dateInput">Date</label>
+                        <input id="dateInput" class="form-control" type="date" />
+                    </div>
+                    <div class="col-4 col-md-2 d-grid">
+                        <button id="todayBtn" class="btn btn-outline-secondary">Today</button>
+                    </div>
+                    <div class="col-6 col-md-1 d-grid">
+                        <button id="prevBtn" class="btn btn-outline-dark">Prev</button>
+                    </div>
+                    <div class="col-6 col-md-1 d-grid">
+                        <button id="nextBtn" class="btn btn-outline-dark">Next</button>
+                    </div>
+                    <div class="col-12 col-md-1 d-grid">
+                        <div class="dropdown">
+                            <button class="btn btn-success dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">Export</button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><button class="dropdown-item" data-export="csv">CSV</button></li>
+                                <li><button class="dropdown-item" data-export="json">JSON</button></li>
+                                <li><button class="dropdown-item" data-export="xlsx">XLSX</button></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-2 mt-2">
+                    <div class="col-12 col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="includeTypical" />
+                            <label class="form-check-label" for="includeTypical">Show typical usage</label>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="includeLast" />
+                            <label class="form-check-label" for="includeLast">Overlay last period</label>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="btn-group" role="group" id="metricGroup">
+                            <button class="btn btn-sm btn-primary" data-metric="kwh">kWh</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="cost">£</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="dashboardError" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+        </section>
+
+        <section class="row g-3 mb-3" id="summaryCards">
+            <div class="col-12 col-md-4"><div class="card summary-card"><div class="card-body"><h2 class="h6 text-muted">Total kWh</h2><div class="h3" id="sumKwh">-</div></div></div></div>
+            <div class="col-12 col-md-4"><div class="card summary-card"><div class="card-body"><h2 class="h6 text-muted">Total £</h2><div class="h3" id="sumCost">-</div></div></div></div>
+            <div class="col-12 col-md-4"><div class="card summary-card"><div class="card-body"><h2 class="h6 text-muted">Delta</h2><div class="h6 mb-0" id="sumDelta">Enable Typical/Last Period</div></div></div></div>
+        </section>
+
+        <section class="card mb-3">
+            <div class="card-body">
+                <div id="loadingState" class="text-center py-5 d-none"><div class="spinner-border text-primary" role="status"></div></div>
+                <canvas id="usageChart" height="90"></canvas>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-body table-wrap">
+                <table class="table table-sm table-striped table-hover" id="usageTable">
+                    <thead>
+                        <tr>
+                            <th data-sort="bucket_start">Bucket Start</th>
+                            <th data-sort="bucket_end">Bucket End</th>
+                            <th data-sort="kwh">kWh</th>
+                            <th data-sort="cost_gbp">£</th>
+                            <th data-sort="typical_kwh">Typical kWh</th>
+                            <th data-sort="typical_cost_gbp">Typical £</th>
+                            <th data-sort="last_period_kwh">Last kWh</th>
+                            <th data-sort="last_period_cost_gbp">Last £</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr class="fw-bold">
+                            <td colspan="2">Totals</td>
+                            <td id="totKwh"></td>
+                            <td id="totCost"></td>
+                            <td id="totTypicalKwh"></td>
+                            <td id="totTypicalCost"></td>
+                            <td id="totLastKwh"></td>
+                            <td id="totLastCost"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="/vendor/chart.js/chart.umd.js"></script>
+    <script src="/public/js/usage-dashboard.js"></script>
+</body>
+</html>`;
+}
+
+app.get('/view-electric', (req, res) => {
+    res.send(renderUsageDashboardPage('electric'));
+});
+
+app.get('/view-gas', (req, res) => {
+    res.send(renderUsageDashboardPage('gas'));
+});
+
+app.get('/api/usage/:fuel', async (req, res) => {
+    const fuel = req.params.fuel;
+    if (!['electric', 'gas'].includes(fuel)) {
+        return res.status(400).json({ error: 'Unsupported fuel.' });
+    }
+
+    const usageQuery = parseUsageQuery(req.query);
     const client = new Client(dbConfig);
 
     try {
-        const { range, date, startIso, endIso } = parseRangeQuery(req.query);
         await client.connect();
-        const [rows, series] = await Promise.all([
-            fetchUsageRows(client, fuel, startIso, endIso),
-            fetchEnergySeries(client, fuel, startIso, endIso, range)
-        ]);
-        res.send(renderEnergyView({ fuel, range, date, rows, series }));
+        const payload = await getUsagePayload(client, fuel, usageQuery);
+        res.json(payload);
     } catch (error) {
-        console.error(`Error rendering ${fuel} view:`, error);
-        res.status(500).send(error.message);
+        console.error('Error fetching usage dashboard data:', error);
+        res.status(500).json({ error: error.message });
     } finally {
         await client.end();
     }
-}
+});
 
-app.get('/view-electric', (req, res) => handleEnergyView(req, res, 'electric'));
-app.get('/view-gas', (req, res) => handleEnergyView(req, res, 'gas'));
+app.get('/api/usage/:fuel/export', async (req, res) => {
+    const fuel = req.params.fuel;
+    if (!['electric', 'gas'].includes(fuel)) {
+        return res.status(400).json({ error: 'Unsupported fuel.' });
+    }
+
+    const format = ['csv', 'json', 'xlsx'].includes(req.query.format) ? req.query.format : 'csv';
+    const usageQuery = parseUsageQuery(req.query);
+    const client = new Client(dbConfig);
+
+    try {
+        await client.connect();
+        const payload = await getUsagePayload(client, fuel, usageQuery);
+        const filename = `usage_${fuel}_${usageQuery.view}_${new Date().toISOString().slice(0, 10)}`;
+
+        if (format === 'json') {
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', `attachment; filename=\"${filename}.json\"`);
+            res.send(JSON.stringify(payload, null, 2));
+            return;
+        }
+
+        if (format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename=\"${filename}.csv\"`);
+            res.send(toCsv(payload));
+            return;
+        }
+
+        const workbook = XLSX.utils.book_new();
+        const metaRows = Object.entries(payload.metadata).map(([k, v]) => ({ key: k, value: v }));
+        const dataRows = payload.rows.map((row) => ({
+            bucket_start: row.bucket_start,
+            bucket_end: row.bucket_end,
+            kwh: row.kwh,
+            cost_gbp: row.cost_gbp,
+            typical_kwh: row.typical_kwh,
+            typical_cost_gbp: row.typical_cost_gbp,
+            last_period_kwh: row.last_period_kwh,
+            last_period_cost_gbp: row.last_period_cost_gbp
+        }));
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(metaRows), 'metadata');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(dataRows), 'rows');
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=\"${filename}.xlsx\"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error exporting usage dashboard data:', error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        await client.end();
+    }
+});
 
 // Serve the charging events page
 app.get('/view_charging_events', async (req, res) => {
@@ -329,7 +863,7 @@ app.get('/view_charging_events', async (req, res) => {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Charging Events Data</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
             <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.21.1/dist/bootstrap-table.min.css">
         </head>
         <body>
@@ -462,7 +996,7 @@ app.get('/view_charge_event/:id_number', async (req, res) => {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Charging Event Details</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
         </head>
         <body>
             <div class="container mt-4">
@@ -622,7 +1156,7 @@ app.get('/view_charge_event_error/:id_number', async (req, res) => {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Error: Charging Event</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
         </head>
         <body>
             <div class="container mt-4">
