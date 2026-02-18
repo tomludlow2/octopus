@@ -1,61 +1,75 @@
 # Octopus Workflow Overview
 
 ## Purpose
-This project ingests Octopus API data, stores interval data in PostgreSQL, identifies EV charging events from Audi/Home Assistant records, and prices those events using interval tariffs and a baseline household profile.
+This project ingests Octopus interval usage into PostgreSQL, identifies EV charging sessions from Audi/Home Assistant events, and estimates charging costs.
 
-## End-to-end workflow
+## 1) Configuration
+Create in repo root:
+- `config.json` (Octopus account/API + meter IDs + direct debit flag)
+- `tariff.json` (tariff/product metadata + gas conversion factor)
+- `db_connect.json` (PostgreSQL connection)
 
-### 1) Configure credentials and tariff metadata
-1. Add `config.json` (account/API + meter IDs).
-2. Add `tariff.json` (product codes, tariff codes, gas conversion factor).
-3. Add `db_connect.json` (PostgreSQL credentials).
+## 2) Current import workflow (v2)
+### Scheduled/latest run
+- `npm run fetch:auto` → `lib/fetchLatestAuto.js`
+- Behavior:
+  - find latest common interval timestamp between gas + electric tables,
+  - import from 24h before that timestamp to now,
+  - send last-3-days usage/cost notification.
 
-### 2) Fetch and insert Octopus data
-- Primary pipeline: `fetchProcessAndInsertOctopusData(startDate, endDate, results)` in `lib/octopusDataProcessor.js`.
-- Processing stages:
-  1. Download usage/rates/standing charges with `getOctopusData` (rates are resolved from account agreement history so tariff switches are handled for historical periods).
-  2. Calculate interval prices with `processPrices`.
-  3. Insert or upsert rows into:
-     - `gas_consumption`,
-     - `electric_consumption`,
-     - `standing_charges`.
+### Import engine
+- `lib/octopusDataProcessor.js` calls `importOctopusData(...)` in `lib/octopusImporter.js`.
+- `lib/octopusImporter.js`:
+  - fetches interval usage for gas/electric,
+  - resolves account-aware tariff periods and rates,
+  - converts gas units to kWh via `tariff.gas_conversion` (gas only),
+  - prices electric via `value_exc_vat`, gas via `value_inc_vat`,
+  - upserts `electric_consumption` and `gas_consumption`,
+  - logs activity to `logs/activity-YYYY-MM-DD.log`.
 
-### 3) Identify charge events
-- Source data is loaded into `audi_events` through:
-  - `server/socket_listener.js` (live), or
-  - `server/test_populate_old_audi_data.js` (historical).
-- `lib/audiDataProcessor.js` derives charging sessions and writes to `charging_events` through `lib/chargeEventInsert.js`.
+### Manual import/backfill tools
+- `npm run fetch:backfill`
+- `npm run gaps:import -- --start ... --end ...`
+- `npm run fetch:monthly:interactive -- --start-month YYYY-MM`
 
-### 4) Price charge events
-- `lib/priceChargeEvent.js` maps charge windows to 30-minute intervals.
-- It subtracts baseline household usage (`energy_baseline.json`) and updates `charging_events` with `energy_used` and `estimated_cost` where validation criteria pass.
+## 3) EV charging workflow
+- Event capture:
+  - `server/socket_listener.js` (live Home Assistant websocket)
+  - `server/webhook_server.js` (webhook logger utility)
+  - `server/test_populate_old_audi_data.js` (historical population helper)
+- Charge event identification:
+  - `npm run charge:identify:auto`
+  - `npm run charge:identify:backfill`
+- Charge event pricing:
+  - `npm run charge:price:auto`
+  - `npm run charge:price:next`
 
-### 5) Automation entrypoints
-- `lib/AUTO_CALL_OCTOPUS.js`: scheduled Octopus fetch.
-- `lib/AUTO_CHARGE_EVENT.js`: scheduled charge-event identification.
-- `lib/autoPriceChargeEvents.js`: scheduled event pricing.
+## 4) Web UI / operations endpoints
+- `server/web_server.js`:
+  - `/logs`
+  - `/view-electric`
+  - `/view-gas`
 
-### 6) Manual backfill entrypoints
-- `lib/invokeDataProcessor.js`: day-by-day historical Octopus ingestion.
-- `lib/invokeAudiProcessor.js`: historical charge-event identification.
-- `lib/invokePriceChargeEvent.js`: process next unpriced event.
+## 5) Data quality / repricing / diagnostics
+- `npm run db:gaps -- --start ... --end ... [--source ...]`
+- `npm run usage:reprice -- --start ... --end ... [--source ...] [--dry-run]`
+- `npm run electric:reprice -- --start ... --end ... [--dry-run]`
+- `npm run interrogate -- --start ... --end ... [--source ...]`
+- `npm run db:inspect`
 
-## Is `invokeDataProcessor.js` used in the main workflow?
-Not for normal automation. It is a manual historical backfill tool. The main automated workflow uses `AUTO_CALL_OCTOPUS.js` and related `AUTO_*` scripts.
+## 6) Notifications
+- Local notifier helper: `lib/localNotifier.js`
+- Usage summaries:
+  - `npm run usage:last-7-days`
+  - `npm run usage:last-month`
+- Auto-import success notification (last 3 days) is emitted by `fetch:auto`.
 
-## Data quality utility: identify missing intervals
-- New utility: `pg/view_missing_intervals.js`.
-- It compares expected 30-minute timestamps against `electric_consumption` and/or `gas_consumption` and reports contiguous missing ranges.
-- Example:
-```bash
-node pg/view_missing_intervals.js --start 2024-12-01T00:00:00Z --end 2024-12-03T00:00:00Z --source both --limit 200
-```
+## 7) Test / validation entrypoints
+- `npm test` (syntax check suite)
+- `npm run test:basic-notification`
+- `npm run test:url-notification`
+- `npm run test:error_notification`
 
-
-## Historical electric repricing
-- Use `pg/reprice_historical_electric.js` to recalculate `electric_consumption.price_pence` from Octopus unit rates valid at each interval timestamp.
-- Supports `--dry-run` for auditing before writing updates.
-
-- Use `pg/reprice_historical_usage.js` to reprice electric and/or gas historical rows using tariff agreements active at each timestamp.
-
-- Use `pg/import_missing_intervals.js` to automatically backfill ranges reported by the missing-interval detector by re-running Octopus fetch/process/insert for each range.
+## 8) Repository layout updates
+- Legacy v1 ingestion/automation code: `legacy/v1/lib/`
+- Manual/diagnostic DB scripts: `pg/manual/`
