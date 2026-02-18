@@ -9,3 +9,5 @@ TEST_GAS_TARIFF.json
 tariff.json
 db_connect.json
 server/server_config.json
+
+server/web_users.json
