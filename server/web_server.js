@@ -63,17 +63,11 @@ function loadAuthUsers() {
             throw new Error('Each web auth user must include a username.');
         }
 
-        if (user.passwordHash && user.salt) {
-            return { username: user.username, passwordHash: user.passwordHash, salt: user.salt };
+        if (!user.passwordHash || !user.salt) {
+            throw new Error(`User ${user.username} must include both salt and passwordHash. Plain-text passwords are not supported.`);
         }
 
-        if (!user.password) {
-            throw new Error(`User ${user.username} is missing password credentials.`);
-        }
-
-        const salt = crypto.randomBytes(16).toString('hex');
-        const passwordHash = crypto.scryptSync(user.password, salt, 64).toString('hex');
-        return { username: user.username, passwordHash, salt };
+        return { username: user.username, passwordHash: user.passwordHash, salt: user.salt };
     });
 }
 

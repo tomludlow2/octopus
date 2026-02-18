@@ -143,15 +143,7 @@ Credentials are loaded from one of:
 
 Supported user shapes:
 
-- Plain password form:
-
-```json
-[
-  { "username": "alice", "password": "replace-me" }
-]
-```
-
-- Pre-hashed form:
+- Hash-only form (required):
 
 ```json
 [
@@ -163,7 +155,13 @@ Supported user shapes:
 ]
 ```
 
-If plain passwords are provided, they are converted at runtime to scrypt hashes in-memory.
+Plain-text passwords are intentionally rejected to avoid storing clear-text credentials in config files.
+
+To generate values, run:
+
+```bash
+node server/generate_password_hash.js "your-password"
+```
 
 ### Session behavior
 
