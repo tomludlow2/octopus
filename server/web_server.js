@@ -46,7 +46,7 @@ function parseCookies(req) {
 }
 
 function loadAuthUsers() {
-    const usersFile = process.env.WEB_AUTH_USERS_FILE || path.join(__dirname, 'web_users.json');
+    const usersFile = process.env.WEB_AUTH_USERS_FILE || (fs.existsSync(path.join(__dirname, 'web_users_active.json')) ? path.join(__dirname, 'web_users_active.json') : path.join(__dirname, 'web_users.json'));
     let rawUsers = [];
 
     if (fs.existsSync(usersFile)) {

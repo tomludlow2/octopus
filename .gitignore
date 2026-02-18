@@ -11,3 +11,6 @@ db_connect.json
 server/server_config.json
 
 server/web_users.json
+
+server/web_users_codex.json
+server/web_users_active.json

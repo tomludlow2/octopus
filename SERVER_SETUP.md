@@ -145,8 +145,10 @@ A lightweight session-based authentication layer protects all feature routes.
 
 Credentials are loaded from one of:
 
-1. `server/web_users.json` (preferred), or
-2. `WEB_AUTH_USERS` environment variable containing JSON array.
+1. `WEB_AUTH_USERS_FILE` environment variable path (if set), or
+2. `server/web_users_active.json` symlink/file (if present), or
+3. `server/web_users.json` fallback, or
+4. `WEB_AUTH_USERS` environment variable containing JSON array.
 
 Supported user shapes:
 
@@ -204,3 +206,11 @@ node server/generate_password_hash.js "your-password"
 - Week view: prior 8 weeks, weekday-aligned daily averages (Mon-Sun).
 - Month view: same calendar month in prior years (day-of-month averages); fallback is prior 3 months day-of-month averages.
 - Typical includes both `kwh` and `cost_gbp` based on stored `price_pence` values.
+
+
+## Codex test-user toggle
+
+For temporary prod testing, two npm scripts switch which credential file is active and restart the systemd service:
+
+- `npm run server:enable_codex` → points `server/web_users_active.json` to `server/web_users_codex.json` and runs `sudo systemctl restart octopus_web_server`.
+- `npm run server:disable_codex` → points `server/web_users_active.json` to `server/web_users.json` and runs the same restart.
