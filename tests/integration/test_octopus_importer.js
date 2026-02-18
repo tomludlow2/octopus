@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { upsertUsageRows, buildRateMap } = require('../../lib/octopusImporter');
+const { upsertUsageRows, normalizeRates } = require('../../lib/octopusImporter');
 
 class MockClient {
     constructor() {
@@ -45,15 +45,15 @@ async function run() {
         value_exc_vat: 11
     }];
 
-    const first = await upsertUsageRows(client, 'electric', usageRows, buildRateMap(ratesA));
-    const second = await upsertUsageRows(client, 'electric', usageRows, buildRateMap(ratesA));
+    const first = await upsertUsageRows(client, 'electric', usageRows, normalizeRates(ratesA));
+    const second = await upsertUsageRows(client, 'electric', usageRows, normalizeRates(ratesA));
 
     assert.strictEqual(first.inserted, 1, 'first run inserts row');
     assert.strictEqual(second.inserted, 0, 'second run should not duplicate row');
     assert.strictEqual(client.rows.size, 1, 'still one row in table');
 
     const beforePrice = client.rows.get('2026-02-15T10:00:00.000Z').price_pence;
-    const third = await upsertUsageRows(client, 'electric', usageRows, buildRateMap(ratesB));
+    const third = await upsertUsageRows(client, 'electric', usageRows, normalizeRates(ratesB));
     const afterPrice = client.rows.get('2026-02-15T10:00:00.000Z').price_pence;
 
     assert.strictEqual(third.updated, 1, 'rate refresh should update existing row');
