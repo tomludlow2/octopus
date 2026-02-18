@@ -464,7 +464,7 @@ async function fetchTypicalBuckets(client, table, view, date, month) {
         ),
         fallback AS (
             SELECT
-                EXTRACT(DAY FROM (start_time AT TIME ZONE 'Europe/London'))::int AS day_of_month,
+                EXTRACT(DAY FROM day_totals.local_day)::int AS day_of_month,
                 AVG(day_totals.kwh)::float AS typical_kwh,
                 AVG(day_totals.cost_gbp)::float AS typical_cost_gbp
             FROM (
@@ -477,7 +477,7 @@ async function fetchTypicalBuckets(client, table, view, date, month) {
                   AND (start_time AT TIME ZONE 'Europe/London')::date < month_input.month_start
                 GROUP BY 1
             ) AS day_totals
-            GROUP BY EXTRACT(DAY FROM local_day)
+            GROUP BY EXTRACT(DAY FROM day_totals.local_day)
         ),
         sample_check AS (
             SELECT COALESCE(MAX(sample_years),0) AS sample_years FROM same_month_agg
