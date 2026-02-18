@@ -100,6 +100,8 @@ See `SERVER_SETUP.md` for a full endpoint/page reference and auth details.
 
 - Generate hashed credentials for web auth: `node server/generate_password_hash.js "<password>"`
 
+- Generate hashed credentials for web auth: `node server/generate_password_hash.js "<password>"`
+
 ## Utilities
 - Missing intervals detector: `npm run db:gaps ...`
 - Missing intervals importer: `npm run gaps:import ...`
