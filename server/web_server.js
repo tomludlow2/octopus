@@ -2,18 +2,199 @@ const express = require('express');
 const fs = require('fs');
 const { Client } = require('pg');
 const path = require('path');
+const crypto = require('crypto');
 
 const { loadDbConfig } = require('../lib/loadDbConfig');
 const dbConfig = loadDbConfig();
 
 const app = express();
 const port = 52529;
+const SESSION_COOKIE_NAME = 'octopus_session';
+const SESSION_TTL_MS = Number(process.env.WEB_AUTH_SESSION_TTL_MS || 12 * 60 * 60 * 1000);
+const sessionStore = new Map();
 
 // Middleware to parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true }));
 
 // Middleware to parse incoming JSON data in the request body
 app.use(express.json());
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function parseCookies(req) {
+    const header = req.headers.cookie;
+    if (!header) {
+        return {};
+    }
+
+    return header.split(';').reduce((cookies, part) => {
+        const [name, ...valueParts] = part.trim().split('=');
+        if (!name || valueParts.length === 0) {
+            return cookies;
+        }
+        cookies[name] = decodeURIComponent(valueParts.join('='));
+        return cookies;
+    }, {});
+}
+
+function loadAuthUsers() {
+    const usersFile = process.env.WEB_AUTH_USERS_FILE || path.join(__dirname, 'web_users.json');
+    let rawUsers = [];
+
+    if (fs.existsSync(usersFile)) {
+        rawUsers = JSON.parse(fs.readFileSync(usersFile, 'utf8'));
+    } else if (process.env.WEB_AUTH_USERS) {
+        rawUsers = JSON.parse(process.env.WEB_AUTH_USERS);
+    }
+
+    if (!Array.isArray(rawUsers) || rawUsers.length === 0) {
+        throw new Error('Web auth is enabled but no users were found. Provide server/web_users.json or WEB_AUTH_USERS JSON.');
+    }
+
+    return rawUsers.map((user) => {
+        if (!user.username) {
+            throw new Error('Each web auth user must include a username.');
+        }
+
+        if (user.passwordHash && user.salt) {
+            return { username: user.username, passwordHash: user.passwordHash, salt: user.salt };
+        }
+
+        if (!user.password) {
+            throw new Error(`User ${user.username} is missing password credentials.`);
+        }
+
+        const salt = crypto.randomBytes(16).toString('hex');
+        const passwordHash = crypto.scryptSync(user.password, salt, 64).toString('hex');
+        return { username: user.username, passwordHash, salt };
+    });
+}
+
+const authUsers = loadAuthUsers();
+
+function validateCredentials(username, password) {
+    if (!username || !password) {
+        return false;
+    }
+
+    const user = authUsers.find((entry) => entry.username === username);
+    if (!user) {
+        return false;
+    }
+
+    const candidate = crypto.scryptSync(password, user.salt, 64);
+    const expected = Buffer.from(user.passwordHash, 'hex');
+    if (candidate.length !== expected.length) {
+        return false;
+    }
+
+    return crypto.timingSafeEqual(candidate, expected);
+}
+
+function createSession(username) {
+    const sessionId = crypto.randomBytes(32).toString('hex');
+    sessionStore.set(sessionId, {
+        username,
+        expiresAt: Date.now() + SESSION_TTL_MS
+    });
+    return sessionId;
+}
+
+function clearSession(req) {
+    const cookies = parseCookies(req);
+    if (cookies[SESSION_COOKIE_NAME]) {
+        sessionStore.delete(cookies[SESSION_COOKIE_NAME]);
+    }
+}
+
+function isAuthenticated(req) {
+    const cookies = parseCookies(req);
+    const sessionId = cookies[SESSION_COOKIE_NAME];
+    if (!sessionId) {
+        return false;
+    }
+
+    const session = sessionStore.get(sessionId);
+    if (!session || session.expiresAt < Date.now()) {
+        sessionStore.delete(sessionId);
+        return false;
+    }
+
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    req.authUser = session.username;
+    return true;
+}
+
+function setSessionCookie(req, res, sessionId) {
+    const secureCookie = process.env.WEB_AUTH_SECURE_COOKIE === 'true' || req.headers['x-forwarded-proto'] === 'https';
+    const secureFlag = secureCookie ? '; Secure' : '';
+    res.setHeader(
+        'Set-Cookie',
+        `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}; SameSite=Lax${secureFlag}`
+    );
+}
+
+function clearSessionCookie(res) {
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
+}
+
+app.get('/login', (req, res) => {
+    const next = typeof req.query.next === 'string' && req.query.next.startsWith('/') ? req.query.next : '/view-electric';
+    const errorMessage = req.query.error ? '<div class="alert alert-danger">Invalid username or password.</div>' : '';
+
+    res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Octopus Web Login</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body class="bg-light"><div class="container py-5"><div class="row justify-content-center"><div class="col-md-5"><div class="card shadow-sm"><div class="card-body"><h1 class="h4 mb-3">Octopus Web Login</h1>${errorMessage}<form method="POST" action="/login"><input type="hidden" name="next" value="${escapeHtml(next)}" /><div class="mb-3"><label class="form-label" for="username">Username</label><input class="form-control" id="username" name="username" required autocomplete="username" /></div><div class="mb-3"><label class="form-label" for="password">Password</label><input class="form-control" id="password" type="password" name="password" required autocomplete="current-password" /></div><button class="btn btn-primary w-100" type="submit">Sign in</button></form></div></div></div></div></div></body></html>`);
+});
+
+app.post('/login', (req, res) => {
+    const next = typeof req.body.next === 'string' && req.body.next.startsWith('/') ? req.body.next : '/view-electric';
+    const { username, password } = req.body;
+
+    if (!validateCredentials(username, password)) {
+        res.redirect(`/login?error=1&next=${encodeURIComponent(next)}`);
+        return;
+    }
+
+    const sessionId = createSession(username);
+    setSessionCookie(req, res, sessionId);
+    res.redirect(next);
+});
+
+app.post('/logout', (req, res) => {
+    clearSession(req);
+    clearSessionCookie(res);
+    res.redirect('/login');
+});
+
+app.use((req, res, next) => {
+    if (req.path === '/login' || req.path === '/logout' || req.path.startsWith('/vendor/chart.js')) {
+        next();
+        return;
+    }
+
+    if (isAuthenticated(req)) {
+        next();
+        return;
+    }
+
+    const wantsHtml = req.accepts(['html', 'json']) === 'html';
+    if (wantsHtml) {
+        res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+        return;
+    }
+
+    res.status(401).json({ error: 'Authentication required.' });
+});
+
+app.get('/', (req, res) => {
+    res.redirect('/view-electric');
+});
 
 
 app.get('/logs', (req, res) => {
