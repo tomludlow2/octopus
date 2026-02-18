@@ -3,11 +3,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Load the config variables
-const configPath = path.join(__dirname, '../config.json');
+const configPath = path.join(__dirname, '../../../config.json');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
 // Load the tariff variables
-const tariffPath = path.join(__dirname, '../tariff.json');
+const tariffPath = path.join(__dirname, '../../../tariff.json');
 const tariff = JSON.parse(fs.readFileSync(tariffPath, 'utf8'));
 
 const apiKey = config.api_key;
@@ -20,7 +20,7 @@ const electric_product_code = tariff.electric_product_code;
 const gas_product_code = tariff.gas_product_code;
 const electricity_tariff_code = tariff.electricity_tariff_code;
 const gas_tariff_code = tariff.gas_tariff_code;
-const { getElectricUnitRatesForPeriod, getGasUnitRatesForPeriod } = require('./tariffRates');
+const { getElectricUnitRatesForPeriod, getGasUnitRatesForPeriod } = require('../../../lib/tariffRates');
 
 async function fetchAllPaginatedResults(initialUrl) {
     const allResults = [];

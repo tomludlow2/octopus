@@ -1,5 +1,5 @@
 const { Client } = require('pg');
-const { loadDbConfig } = require('./loadDbConfig');
+const { loadDbConfig } = require('../../../lib/loadDbConfig');
 
 const dbConfig = loadDbConfig();
 

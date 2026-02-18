@@ -1,5 +1,5 @@
-const { fetchProcessAndInsertOctopusData } = require('./octopusDataProcessor');
-const { loadOptionalModule } = require('./loadOptionalModule');
+const { fetchProcessAndInsertOctopusData } = require('../../../lib/octopusDataProcessor');
+const { loadOptionalModule } = require('../../../lib/loadOptionalModule');
 
 const generateOctopusNotification = loadOptionalModule([
     process.env.OCTOPUS_NOTIFY_MODULE,

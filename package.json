@@ -6,7 +6,7 @@
   "scripts": {
     "test": "npm run check:syntax",
     "check:syntax": "node scripts/check-syntax.js",
-    "fetch:auto": "node lib/AUTO_CALL_OCTOPUS.js",
+    "fetch:auto": "node lib/fetchLatestAuto.js",
     "fetch:backfill": "node lib/invokeDataProcessor.js",
     "charge:identify:auto": "node lib/AUTO_CHARGE_EVENT.js",
     "charge:identify:backfill": "node lib/invokeAudiProcessor.js",
@@ -15,12 +15,21 @@
     "db:gaps": "node pg/view_missing_intervals.js",
     "electric:reprice": "node pg/reprice_historical_electric.js",
     "usage:reprice": "node pg/reprice_historical_usage.js",
-    "gaps:import": "node pg/import_missing_intervals.js"
+    "gaps:import": "node pg/import_missing_intervals.js",
+    "db:inspect": "node pg/inspect_schema_permissions.js",
+    "fetch:monthly:interactive": "node pg/monthly_backfill_interactive.js",
+    "test:basic-notification": "node tests/notification/test_basic_notification.js",
+    "test:url-notification": "node tests/notification/test_url_notification.js",
+    "usage:last-7-days": "node pg/notify_last_7_days_usage.js",
+    "usage:last-month": "node pg/notify_last_month_usage.js",
+    "test:error_notification": "node tests/notification/test_error_notification.js",
+    "interrogate": "node pg/interrogate_usage.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.7",
+    "chart.js": "^4.4.7",
     "cli-table3": "^0.6.5",
     "csv-parser": "^3.0.0",
     "date-fns": "^4.1.0",

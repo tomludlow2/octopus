@@ -1,11 +1,12 @@
 # Octopus
 
-Tools to pull Octopus Energy API data, identify EV charge events, and store priced results in PostgreSQL.
+Tools to ingest Octopus Energy usage into PostgreSQL, identify EV charging sessions, and price those sessions using interval tariffs.
 
 ## Prerequisites
-- Node.js + npm.
-- Octopus Energy account details.
-- `config.json`, `tariff.json`, and `db_connect.json` in the repository root.
+- Node.js + npm
+- PostgreSQL
+- Octopus account + meter identifiers
+- Root config files: `config.json`, `tariff.json`, `db_connect.json`
 
 ## Configuration
 
@@ -44,76 +45,71 @@ Tools to pull Octopus Energy API data, identify EV charge events, and store pric
 }
 ```
 
-## Workflow overview
+## Current ingestion workflow (v2)
+- Main entrypoint used by automation: `npm run fetch:auto` → `lib/fetchLatestAuto.js`.
+- `fetchLatestAuto`:
+  1. Finds latest common timestamp across `electric_consumption` + `gas_consumption`.
+  2. Imports from 24h before that timestamp to now.
+  3. Calls `fetchProcessAndInsertOctopusData(...)`.
+  4. Sends last-3-days success usage notification.
+- `lib/octopusDataProcessor.js` delegates to `lib/octopusImporter.js`.
+- `lib/octopusImporter.js`:
+  - fetches Octopus usage and tariff rates,
+  - applies gas conversion only for gas rows,
+  - prices electric with `value_exc_vat`, gas with `value_inc_vat`,
+  - upserts into `electric_consumption` + `gas_consumption`,
+  - writes activity logs (`./logs/activity-YYYY-MM-DD.log`).
 
-### 1) Fetch + process Octopus usage
-- Core function: `lib/octopusDataProcessor.js` → `fetchProcessAndInsertOctopusData(startDate, endDate, results)`.
-- Collects usage/rates/standing charge data with `getOctopusData`.
-- Unit rates are resolved from account agreement history (`/accounts/{account}/`) so historical intervals use the tariff active at that time.
-- Processes usage pricing with `processPrices`.
-- Inserts into:
-  - `gas_consumption`,
-  - `electric_consumption`,
-  - `standing_charges`.
+## EV charge workflow
+- Ingest Audi/Home Assistant state events into `audi_events` (via websocket listener or historical loaders).
+- Identify charging sessions: `lib/audiDataProcessor.js` + `lib/chargeEventInsert.js`.
+- Price charging sessions: `lib/priceChargeEvent.js` using interval usage and `energy_baseline.json`.
 
-### 2) Identify charging events
-- `lib/audiDataProcessor.js` and `lib/chargeEventInsert.js` process Audi/Home Assistant state events and insert into `charging_events`.
-
-### 3) Price charging events
-- `lib/priceChargeEvent.js` reads interval usage, subtracts baseline values from `energy_baseline.json`, and updates charging event cost/energy totals.
-
-### 4) Automation wrappers
-- `lib/AUTO_CALL_OCTOPUS.js` fetches Octopus data for the scheduled window.
-- `lib/AUTO_CHARGE_EVENT.js` identifies charge events.
-- `lib/autoPriceChargeEvents.js` prices charge events.
-
-## Is `invokeDataProcessor.js` part of normal automation?
-No. It is a manual backfill helper, not a scheduler entrypoint. It is useful when you need to ingest historical ranges day-by-day. Normal scheduled runs use `AUTO_CALL_OCTOPUS.js` and the other `AUTO_*` wrappers.
+## Running servers (in active use)
+- `server/web_server.js` (port `52529`):
+  - `/logs` activity log viewer
+  - `/view-electric` and `/view-gas` chart/report pages
+- `server/webhook_server.js` (port `52530`): webhook payload logger to `server/webhook_calls/`.
+- `server/socket_listener.js`: Home Assistant websocket listener for Audi charging state events.
 
 ## NPM scripts
-- `npm test` → syntax validation across `lib`, `pg`, `server`, `tests`.
-- `npm run fetch:auto` → run scheduled-style Octopus fetch wrapper.
-- `npm run fetch:backfill` → run manual daily backfill iterator.
-- `npm run charge:identify:auto` → run automated charge event identifier.
-- `npm run charge:identify:backfill` → run manual Audi event processing.
-- `npm run charge:price:auto` → process all charge events.
-- `npm run charge:price:next` → process next unpriced charge event.
-- `npm run db:gaps -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 200]`.
-- `npm run gaps:import -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 10000] [--max-ranges 200] [--dry-run]`.
-- `npm run electric:reprice -- --start <iso> --end <iso> [--dry-run]`.
-- `npm run usage:reprice -- --start <iso> --end <iso> [--source electric|gas|both] [--dry-run]`.
+- `npm test` → syntax validation across `lib`, `pg`, `server`, `tests`
+- `npm run fetch:auto` → latest overlap auto-import + 3-day notification
+- `npm run fetch:backfill` → manual day-by-day historical import iterator
+- `npm run charge:identify:auto` → scheduled charge-event identification
+- `npm run charge:identify:backfill` → manual historical Audi event processing
+- `npm run charge:price:auto` → process all charging events
+- `npm run charge:price:next` → process next unpriced charging event
+- `npm run db:gaps -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 200]`
+- `npm run gaps:import -- --start <iso> --end <iso> [--source electric|gas|both] [--limit 10000] [--max-ranges 200] [--dry-run]`
+- `npm run electric:reprice -- --start <iso> --end <iso> [--dry-run]`
+- `npm run usage:reprice -- --start <iso> --end <iso> [--source electric|gas|both] [--dry-run]`
+- `npm run db:inspect`
+- `npm run fetch:monthly:interactive -- --start-month YYYY-MM [--max-months 12]`
+- `npm run usage:last-7-days`
+- `npm run usage:last-month`
+- `npm run interrogate -- --start <iso> --end <iso> [--source electric|gas|both]`
+- `npm run test:basic-notification`
+- `npm run test:url-notification`
+- `npm run test:error_notification`
 
-## Finding missing periods in DB records
-Use:
-```bash
-npm run db:gaps -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --source both --limit 200
-```
+## Utilities
+- Missing intervals detector: `npm run db:gaps ...`
+- Missing intervals importer: `npm run gaps:import ...`
+- Usage repricing: `npm run usage:reprice ...`
+- Interrogation report export: `npm run interrogate ...` writes `reports/interrogation_dd_mm_yy_hh_mm.json`
 
-This checks expected 30-minute intervals and reports missing ranges for `electric_consumption`, `gas_consumption`, or both.
+## Notifications
+- `lib/localNotifier.js` sends to `http://localhost:55000/api/notify` by default.
+- Usage summaries:
+  - weekly: `npm run usage:last-7-days`
+  - monthly: `npm run usage:last-month`
+  - auto-import success: triggered by `fetch:auto` (last 3 days)
 
-
-
-## Import missing intervals
-Use:
-```bash
-npm run gaps:import -- --start 2024-12-01T00:00:00Z --end 2024-12-05T00:00:00Z --source both --max-ranges 50 --dry-run
-```
-
-This reads missing ranges from the DB gap check and re-runs the Octopus fetch/process/insert pipeline for each range. Remove `--dry-run` to write data.
-
-## Reprice historical usage
-Use:
-```bash
-npm run usage:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:00Z --source both --dry-run
-```
-
-This recalculates `electric_consumption` and/or `gas_consumption` rows by matching each interval timestamp to the tariff agreement active at that time, then pulling the corresponding Octopus unit rates for that tariff period. Remove `--dry-run` to persist updates.
-
-If you only need electric repricing, keep using:
-```bash
-npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:00Z --dry-run
-```
+## Repository organization notes
+- Legacy v1 ingestion/automation code moved to `legacy/v1/lib/`.
+- Manual/diagnostic Postgres scripts moved to `pg/manual/`.
 
 ## Notes
-- Octopus billing calculations can differ slightly from API output due to rounding and VAT handling.
-- `DATABASE_SETUP.md` contains table creation and permission steps.
+- Standing charge handling exists in legacy v1 modules and is not part of the current v2 importer path.
+- `DATABASE_SETUP.md` contains table creation/permission guidance.
