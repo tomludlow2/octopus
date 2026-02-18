@@ -17,7 +17,9 @@
     "usage:reprice": "node pg/reprice_historical_usage.js",
     "gaps:import": "node pg/import_missing_intervals.js",
     "db:inspect": "node pg/inspect_schema_permissions.js",
-    "fetch:monthly:interactive": "node pg/monthly_backfill_interactive.js"
+    "fetch:monthly:interactive": "node pg/monthly_backfill_interactive.js",
+    "test:basic-notification": "node tests/notification/test_basic_notification.js",
+    "test:url-notification": "node tests/notification/test_url_notification.js"
   },
   "author": "",
   "license": "ISC",
