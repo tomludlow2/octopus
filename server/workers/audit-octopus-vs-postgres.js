@@ -156,6 +156,19 @@ function toMap(rows) {
 
 function totalKwh(rows) { return rows.reduce((a, r) => a + Number(r.kwh || 0), 0); }
 
+function isEffectivelyZero(value) {
+    return Math.abs(Number(value || 0)) <= 0.0005;
+}
+
+function clampApiRowsToRange(rows, fromIso, toIso) {
+    const fromMs = new Date(fromIso).getTime();
+    const toMs = new Date(toIso).getTime();
+    return rows.filter((row) => {
+        const startMs = new Date(row.interval_start).getTime();
+        return startMs >= fromMs && startMs < toMs;
+    });
+}
+
 function reconcileGasByCVIfNeeded(dbRows, apiRawRows) {
     const apiRawTotal = totalKwh(apiRawRows);
     const dbTotal = totalKwh(dbRows);
@@ -202,10 +215,16 @@ function compareSeries({ fuel, bucket, dbRows, apiRows, mode, periodLabel }) {
         const db = dbMap.get(key);
         const api = apiMap.get(key);
         if (!db && api) {
+            if (isEffectivelyZero(api.kwh)) {
+                continue;
+            }
             results.push({ classification: 'FAIL', issue: 'DB GAP', bucket: key, details: `API has ${fmt(api.kwh)} kWh but DB missing` });
             continue;
         }
         if (db && !api) {
+            if (isEffectivelyZero(db.kwh)) {
+                continue;
+            }
             results.push({
                 classification: 'UNCERTAIN',
                 issue: 'API GAP',
@@ -219,12 +238,13 @@ function compareSeries({ fuel, bucket, dbRows, apiRows, mode, periodLabel }) {
         const delta = Number(db.kwh) - Number(api.kwh);
         const deltaAbs = Math.abs(delta);
         const deltaPct = Math.abs(pct(delta, db.kwh || 1));
+        const outlier = deltaAbs >= Math.max(CONFIG.gasAlertKwh, 1) || deltaPct >= 100;
 
         if (fuel === 'electric') {
             const ok = deltaAbs <= CONFIG.tolElecBucketKwh;
             results.push({
                 classification: ok ? 'PASS' : 'FAIL',
-                issue: ok ? 'OK' : 'ELECTRIC_MISMATCH',
+                issue: ok ? 'OK' : (outlier ? 'ELECTRIC_OUTLIER' : 'ELECTRIC_MISMATCH'),
                 bucket: key,
                 details: `Postgres ${fmt(db.kwh)} kWh, API ${fmt(api.kwh)} kWh, Δ ${fmt(deltaAbs)} kWh (${deltaPct.toFixed(3)}%)`
             });
@@ -237,7 +257,7 @@ function compareSeries({ fuel, bucket, dbRows, apiRows, mode, periodLabel }) {
                 results.push({
                     classification: severe ? 'FAIL' : 'UNCERTAIN',
                     confidence: severe ? 0.9 : 0.55,
-                    issue: severe ? 'GAS_MISMATCH' : 'GAS_UNCERTAIN',
+                    issue: severe ? (outlier ? 'GAS_OUTLIER' : 'GAS_MISMATCH') : 'GAS_UNCERTAIN',
                     bucket: key,
                     details: `Postgres ${fmt(db.kwh)} kWh, API ${fmt(api.kwh)} kWh, Δ ${fmt(deltaAbs)} kWh (${deltaPct.toFixed(2)}%)`
                 });
@@ -322,7 +342,8 @@ async function notifyIfNeeded(mode, summary, gasReconcile, logFile, notifyUncert
 
 async function runPeriodAudit({ client, mode, fuel, fromIso, toIso, periodLabel, bucket, logFile, notifyUncertain }) {
     const dbRows = await fetchPostgresUsage(client, fuel, fromIso, toIso, bucket);
-    const apiRaw = await fetchOctopusUsageWithRetry(fuel, fromIso, toIso, logFile);
+    const apiRawUnbounded = await fetchOctopusUsageWithRetry(fuel, fromIso, toIso, logFile);
+    const apiRaw = clampApiRowsToRange(apiRawUnbounded, fromIso, toIso);
 
     let apiRows;
     let gasReconcile = null;
