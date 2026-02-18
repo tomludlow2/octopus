@@ -15,12 +15,17 @@
     "db:gaps": "node pg/view_missing_intervals.js",
     "electric:reprice": "node pg/reprice_historical_electric.js",
     "usage:reprice": "node pg/reprice_historical_usage.js",
-    "gaps:import": "node pg/import_missing_intervals.js"
+    "gaps:import": "node pg/import_missing_intervals.js",
+    "db:inspect": "node pg/inspect_schema_permissions.js",
+    "fetch:monthly:interactive": "node pg/monthly_backfill_interactive.js",
+    "test:basic-notification": "node tests/notification/test_basic_notification.js",
+    "test:url-notification": "node tests/notification/test_url_notification.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.7",
+    "chart.js": "^4.4.7",
     "cli-table3": "^0.6.5",
     "csv-parser": "^3.0.0",
     "date-fns": "^4.1.0",
