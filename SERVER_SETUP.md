@@ -214,3 +214,17 @@ For temporary prod testing, two npm scripts switch which credential file is acti
 
 - `npm run server:enable_codex` → points `server/web_users_active.json` to `server/web_users_codex.json` and runs `sudo systemctl restart octopus_web_server`.
 - `npm run server:disable_codex` → points `server/web_users_active.json` to `server/web_users.json` and runs the same restart.
+
+
+## Audit worker
+
+- Worker: `server/workers/audit-octopus-vs-postgres.js`
+- Purpose: compare Postgres usage/cost data against Octopus API data and classify each comparison as PASS/FAIL/UNCERTAIN.
+- Modes:
+  - `--mode=full`: month-by-month sweep (capped by `AUDIT_MAX_MONTHS`).
+  - `--mode=regular`: rolling 3-month week-by-week checks.
+  - `--mode=spot`: 20 seeded random spot checks across last 12 months (`--seed`).
+- Fuels: `--fuel=electric|gas|both`.
+- Notifications: uses existing `lib/localNotifier` path; sends on significant FAILs by default, optional uncertain notifications via `--notify-uncertain`.
+- Logging: console, `logs/activity-YYYY-MM-DD.log` via activity logger, and append-only `logs/audit-octopus-YYYY-MM-DD.log` (or `AUDIT_LOG_DIR`).
+- Script: `npm run audit:octopus -- --mode=regular --fuel=both`.

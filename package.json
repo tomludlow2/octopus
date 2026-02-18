@@ -25,7 +25,8 @@
     "test:error_notification": "node tests/notification/test_error_notification.js",
     "interrogate": "node pg/interrogate_usage.js",
     "server:enable_codex": "node scripts/toggle_codex_auth.js enable",
-    "server:disable_codex": "node scripts/toggle_codex_auth.js disable"
+    "server:disable_codex": "node scripts/toggle_codex_auth.js disable",
+    "audit:octopus": "node server/workers/audit-octopus-vs-postgres.js"
   },
   "author": "",
   "license": "ISC",
