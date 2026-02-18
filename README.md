@@ -206,3 +206,17 @@ This includes:
 ```bash
 npm run test:error_notification
 ```
+
+
+## Interrogate DB vs Octopus raw data
+Use:
+```bash
+npm run interrogate -- --start 2024-01-01T00:00:00Z --end 2024-02-01T00:00:00Z --source both
+```
+
+This will:
+- print human-readable CLI tables for each selected fuel,
+- show tariff/product periods detected for that range,
+- compare DB interval rows vs Octopus API interval rows,
+- highlight mismatches (missing in DB/API or value mismatches),
+- export full raw/intermediate data to `reports/interrogation_dd_mm_yy_hh_mm.json`.

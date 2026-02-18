@@ -22,7 +22,8 @@
     "test:url-notification": "node tests/notification/test_url_notification.js",
     "usage:last-7-days": "node pg/notify_last_7_days_usage.js",
     "usage:last-month": "node pg/notify_last_month_usage.js",
-    "test:error_notification": "node tests/notification/test_error_notification.js"
+    "test:error_notification": "node tests/notification/test_error_notification.js",
+    "interrogate": "node pg/interrogate_usage.js"
   },
   "author": "",
   "license": "ISC",
