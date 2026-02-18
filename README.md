@@ -174,8 +174,35 @@ Behavior:
   - required: `title`, `body`, `sendNow` (defaults to `true`)
   - optional: `html` (preferred for simple styled notifications) OR `url` (for complex interactions)
 
-Basic checks:
+Live endpoint checks (sends real notifications to configured local endpoint):
 ```bash
 npm run test:basic-notification
 npm run test:url-notification
+```
+
+
+## Usage summary notifications
+- Weekly summary notification (last 7 days up to most recent imported common fuel date):
+```bash
+npm run usage:last-7-days
+```
+This includes:
+- total electric/gas kWh and cost,
+- day-by-day table of electric/gas kWh,
+- comparison to previous 7-day cost window.
+
+- Last calendar month summary notification:
+```bash
+npm run usage:last-month
+```
+This includes:
+- total electric/gas kWh and cost,
+- top 3 gas days and top 3 electric days,
+- delta vs previous month (kWh and cost).
+
+## Error notification helper
+- Helper: `localErrorNotify(errorType, errorDescription, { logFile?, url? })` in `lib/localNotifier.js`.
+- Test trigger:
+```bash
+npm run test:error_notification
 ```

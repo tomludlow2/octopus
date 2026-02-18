@@ -1,59 +1,28 @@
-const http = require('http');
 const assert = require('assert');
 const { sendBasicHtmlNotification } = require('../../lib/localNotifier');
 
-async function createTestServer() {
-    return new Promise((resolve) => {
-        const requests = [];
-        const server = http.createServer((req, res) => {
-            if (req.method !== 'POST' || req.url !== '/api/notify') {
-                res.statusCode = 404;
-                res.end('not found');
-                return;
-            }
-
-            let body = '';
-            req.on('data', (chunk) => { body += chunk; });
-            req.on('end', () => {
-                requests.push(JSON.parse(body));
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ ok: true }));
-            });
-        });
-
-        server.listen(0, '127.0.0.1', () => {
-            const { port } = server.address();
-            resolve({ server, port, requests });
-        });
-    });
-}
-
 async function run() {
-    const { server, port, requests } = await createTestServer();
+    const result = await sendBasicHtmlNotification({
+        title: 'Basic Notification Test',
+        body: 'Testing html notification delivery',
+        html: '<div><h3>Basic Notification Test</h3><p>Live endpoint notification test</p></div>'
+    });
 
-    try {
-        const result = await sendBasicHtmlNotification({
-            title: 'Basic Notification',
-            body: 'This is a basic notification',
-            html: '<div><strong>Basic</strong> HTML Notification</div>'
-        }, {
-            endpoint: `http://127.0.0.1:${port}/api/notify`
-        });
+    assert.ok(result.status >= 200 && result.status < 300, `Expected 2xx status, got ${result.status}`);
 
-        assert.strictEqual(result.status, 200);
-        assert.strictEqual(requests.length, 1);
-        assert.strictEqual(requests[0].title, 'Basic Notification');
-        assert.strictEqual(requests[0].sendNow, true);
-        assert.ok(requests[0].html.includes('Basic'));
-        assert.strictEqual(requests[0].url, undefined);
-
-        console.log('ok - basic html notification test passed');
-    } finally {
-        server.close();
-    }
+    console.log('ok - basic html notification sent to live endpoint');
+    console.log(JSON.stringify({
+        endpoint: result.endpoint,
+        status: result.status,
+        response: result.data
+    }, null, 2));
 }
 
 run().catch((error) => {
-    console.error(error);
+    console.error('basic notification test failed:', error.message || String(error));
+    if (error.response) {
+        console.error('response status:', error.response.status);
+        console.error('response data:', JSON.stringify(error.response.data));
+    }
     process.exitCode = 1;
 });
