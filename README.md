@@ -69,8 +69,11 @@ Tools to ingest Octopus Energy usage into PostgreSQL, identify EV charging sessi
 - `server/web_server.js` (port `52529`):
   - `/logs` activity log viewer
   - `/view-electric` and `/view-gas` chart/report pages
+  - Session auth enabled; configure users via hashed credentials in `server/web_users.json` (or `WEB_AUTH_USERS`)
 - `server/webhook_server.js` (port `52530`): webhook payload logger to `server/webhook_calls/`.
 - `server/socket_listener.js`: Home Assistant websocket listener for Audi charging state events.
+
+See `SERVER_SETUP.md` for a full endpoint/page reference and auth details.
 
 ## NPM scripts
 - `npm test` → syntax validation across `lib`, `pg`, `server`, `tests`
@@ -92,6 +95,10 @@ Tools to ingest Octopus Energy usage into PostgreSQL, identify EV charging sessi
 - `npm run test:basic-notification`
 - `npm run test:url-notification`
 - `npm run test:error_notification`
+- `npm run server:enable_codex` → switch auth to `server/web_users_codex.json` and restart `octopus_web_server`
+- `npm run server:disable_codex` → switch auth to `server/web_users.json` and restart `octopus_web_server`
+
+- Generate hashed credentials for web auth: `node server/generate_password_hash.js "<password>"`
 
 ## Utilities
 - Missing intervals detector: `npm run db:gaps ...`
