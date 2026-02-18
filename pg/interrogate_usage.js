@@ -138,13 +138,16 @@ function compareUsage(dbRows, apiRows, rates, fuel) {
         const api = apiMap.get(key) || null;
 
         if (!db || !api) {
+            const apiRaw = api ? api.consumption : null;
+            const gasCurrent = fuel === 'gas' && api ? api.consumption * GAS_CONVERSION_CURRENT : null;
+            const gasLegacy = fuel === 'gas' && api ? api.consumption * GAS_CONVERSION_LEGACY : null;
             mismatches.push({
                 interval_start: key,
                 issue: !db ? 'missing_in_db' : 'missing_in_api',
                 db_consumption: db ? db.consumption_kwh : null,
-                api_consumption_raw: api ? api.consumption : null,
-                api_consumption_kwh_current: api ? api.consumption * GAS_CONVERSION_CURRENT : null,
-                api_consumption_kwh_legacy: api ? api.consumption * GAS_CONVERSION_LEGACY : null,
+                api_consumption_raw: apiRaw,
+                api_consumption_kwh_current: gasCurrent,
+                api_consumption_kwh_legacy: gasLegacy,
                 db_price_pence: db ? db.price_pence : null,
                 expected_price_pence: null
             });
@@ -153,7 +156,7 @@ function compareUsage(dbRows, apiRows, rates, fuel) {
 
         const rate = findIntervalRate(key, rates, fuel);
 
-        let apiComparableConsumption = api.consumption;
+        const apiComparableConsumption = api.consumption;
         let expectedPrice = rate === null ? null : Math.round((Math.round(apiComparableConsumption * 100) / 100) * rate * 100) / 100;
         let consumptionMismatch = Math.abs(db.consumption_kwh - apiComparableConsumption) > 0.0001;
 
