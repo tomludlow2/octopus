@@ -72,7 +72,7 @@ No. It is a manual backfill helper, not a scheduler entrypoint. It is useful whe
 
 ## NPM scripts
 - `npm test` → syntax validation across `lib`, `pg`, `server`, `tests`.
-- `npm run fetch:auto` → run scheduled-style Octopus fetch wrapper.
+- `npm run fetch:auto` → import latest period since last common gas/electric row with 24h overlap, reprice (VAT inclusive + gas calorific correction), then send 3-day success notification.
 - `npm run fetch:backfill` → run manual daily backfill iterator.
 - `npm run charge:identify:auto` → run automated charge event identifier.
 - `npm run charge:identify:backfill` → run manual Audi event processing.
@@ -220,3 +220,11 @@ This will:
 - compare DB interval rows vs Octopus API interval rows,
 - highlight mismatches (missing in DB/API or value mismatches),
 - export full raw/intermediate data to `reports/interrogation_dd_mm_yy_hh_mm.json`.
+
+
+### New `fetch:auto` behavior
+`npm run fetch:auto` now:
+- finds latest common import timestamp across `electric_consumption` and `gas_consumption`,
+- imports from 24h before that point to now (to catch retrospective API price/rate changes),
+- updates prices using importer logic,
+- sends a success notification with gas/electric usage and costs over the last 3 days.

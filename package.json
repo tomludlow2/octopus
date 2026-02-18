@@ -6,7 +6,7 @@
   "scripts": {
     "test": "npm run check:syntax",
     "check:syntax": "node scripts/check-syntax.js",
-    "fetch:auto": "node lib/AUTO_CALL_OCTOPUS.js",
+    "fetch:auto": "node lib/fetchLatestAuto.js",
     "fetch:backfill": "node lib/invokeDataProcessor.js",
     "charge:identify:auto": "node lib/AUTO_CHARGE_EVENT.js",
     "charge:identify:backfill": "node lib/invokeAudiProcessor.js",

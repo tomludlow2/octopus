@@ -10,6 +10,9 @@ const { getTariffPeriodsForFuel, getElectricUnitRatesForPeriod, getGasUnitRatesF
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, '../config.json'), 'utf8'));
 const dbConfig = loadDbConfig();
 
+const GAS_CONVERSION_CURRENT = 11.36266666;
+const GAS_CONVERSION_LEGACY = 11.22063333;
+
 function parseArgs(argv) {
     const args = {
         start: null,
@@ -112,6 +115,13 @@ function findIntervalRate(intervalStartIso, rates, fuel) {
     return fuel === 'electric' ? Number(matching.value_exc_vat) : Number(matching.value_inc_vat);
 }
 
+function expectedGasKwhRange(rawGasUnits) {
+    const raw = Number(rawGasUnits || 0);
+    const low = raw * Math.min(GAS_CONVERSION_CURRENT, GAS_CONVERSION_LEGACY);
+    const high = raw * Math.max(GAS_CONVERSION_CURRENT, GAS_CONVERSION_LEGACY);
+    return { low, high };
+}
+
 function compareUsage(dbRows, apiRows, rates, fuel) {
     const dbMap = toMap(dbRows);
     const apiMap = toMap(apiRows.map((row) => ({
@@ -132,7 +142,9 @@ function compareUsage(dbRows, apiRows, rates, fuel) {
                 interval_start: key,
                 issue: !db ? 'missing_in_db' : 'missing_in_api',
                 db_consumption: db ? db.consumption_kwh : null,
-                api_consumption: api ? api.consumption : null,
+                api_consumption_raw: api ? api.consumption : null,
+                api_consumption_kwh_current: api ? api.consumption * GAS_CONVERSION_CURRENT : null,
+                api_consumption_kwh_legacy: api ? api.consumption * GAS_CONVERSION_LEGACY : null,
                 db_price_pence: db ? db.price_pence : null,
                 expected_price_pence: null
             });
@@ -140,16 +152,35 @@ function compareUsage(dbRows, apiRows, rates, fuel) {
         }
 
         const rate = findIntervalRate(key, rates, fuel);
-        const expectedPrice = rate === null ? null : Math.round((Math.round(api.consumption * 100) / 100) * rate * 100) / 100;
-        const consumptionDiff = Math.abs(db.consumption_kwh - api.consumption);
+
+        let apiComparableConsumption = api.consumption;
+        let expectedPrice = rate === null ? null : Math.round((Math.round(apiComparableConsumption * 100) / 100) * rate * 100) / 100;
+        let consumptionMismatch = Math.abs(db.consumption_kwh - apiComparableConsumption) > 0.0001;
+
+        let apiConsumptionKwhCurrent = null;
+        let apiConsumptionKwhLegacy = null;
+
+        if (fuel === 'gas') {
+            const gasRange = expectedGasKwhRange(api.consumption);
+            apiConsumptionKwhCurrent = api.consumption * GAS_CONVERSION_CURRENT;
+            apiConsumptionKwhLegacy = api.consumption * GAS_CONVERSION_LEGACY;
+            const withinRange = db.consumption_kwh >= (gasRange.low - 0.001) && db.consumption_kwh <= (gasRange.high + 0.001);
+            consumptionMismatch = !withinRange;
+
+            const dbRounded = Math.round(db.consumption_kwh * 100) / 100;
+            expectedPrice = rate === null ? null : Math.round(dbRounded * rate * 100) / 100;
+        }
+
         const priceDiff = expectedPrice === null ? 0 : Math.abs(db.price_pence - expectedPrice);
 
-        if (consumptionDiff > 0.0001 || priceDiff > 0.01) {
+        if (consumptionMismatch || priceDiff > 0.01) {
             mismatches.push({
                 interval_start: key,
                 issue: 'value_mismatch',
                 db_consumption: db.consumption_kwh,
-                api_consumption: api.consumption,
+                api_consumption_raw: api.consumption,
+                api_consumption_kwh_current: apiConsumptionKwhCurrent,
+                api_consumption_kwh_legacy: apiConsumptionKwhLegacy,
                 db_price_pence: db.price_pence,
                 expected_price_pence: expectedPrice
             });
@@ -160,6 +191,7 @@ function compareUsage(dbRows, apiRows, rates, fuel) {
         total_db_rows: dbRows.length,
         total_api_rows: apiRows.length,
         mismatch_count: mismatches.length,
+        gas_conversion_factors_considered: fuel === 'gas' ? [GAS_CONVERSION_LEGACY, GAS_CONVERSION_CURRENT] : null,
         mismatches
     };
 }
@@ -191,7 +223,7 @@ function printSummaryTable(fuel, comparison) {
 
 function printMismatchTable(fuel, mismatches) {
     const table = new Table({
-        head: ['Interval Start', 'Issue', 'DB kWh', 'API kWh', 'DB pence', 'Expected pence']
+        head: ['Interval Start', 'Issue', 'DB kWh', 'API raw', 'API kWh(curr)', 'API kWh(legacy)', 'DB pence', 'Expected pence']
     });
 
     mismatches.slice(0, 60).forEach((item) => {
@@ -199,7 +231,9 @@ function printMismatchTable(fuel, mismatches) {
             item.interval_start,
             item.issue,
             item.db_consumption ?? '-',
-            item.api_consumption ?? '-',
+            item.api_consumption_raw ?? '-',
+            item.api_consumption_kwh_current ?? '-',
+            item.api_consumption_kwh_legacy ?? '-',
             item.db_price_pence ?? '-',
             item.expected_price_pence ?? '-'
         ]);
