@@ -72,7 +72,7 @@ No. It is a manual backfill helper, not a scheduler entrypoint. It is useful whe
 
 ## NPM scripts
 - `npm test` → syntax validation across `lib`, `pg`, `server`, `tests`.
-- `npm run fetch:auto` → run scheduled-style Octopus fetch wrapper.
+- `npm run fetch:auto` → import latest period since last common gas/electric row with 24h overlap, reprice (VAT inclusive + gas calorific correction), then send 3-day success notification.
 - `npm run fetch:backfill` → run manual daily backfill iterator.
 - `npm run charge:identify:auto` → run automated charge event identifier.
 - `npm run charge:identify:backfill` → run manual Audi event processing.
@@ -117,3 +117,117 @@ npm run electric:reprice -- --start 2024-12-01T00:00:00Z --end 2024-12-08T00:00:
 ## Notes
 - Octopus billing calculations can differ slightly from API output due to rounding and VAT handling.
 - `DATABASE_SETUP.md` contains table creation and permission steps.
+
+
+## How it works (Postgres as source of truth)
+- Importing runs through `lib/octopusImporter.js` and writes only to existing tables:
+  - `electric_consumption`
+  - `gas_consumption`
+  - (existing standing charge handling remains in legacy scripts)
+- Import logic:
+  - detects missing half-hour intervals in the existing consumption tables,
+  - fetches Octopus usage for missing intervals,
+  - always refreshes a retrospective backfill window (`OCTOPUS_BACKFILL_DAYS`, default `14`) so late Octopus corrections are actioned by updating existing rows,
+  - upserts into existing consumption tables using `ON CONFLICT (start_time)`.
+- Activity logs are written to `./logs/activity-YYYY-MM-DD.log` (append-only, one line per operation).
+- Use web endpoint `/logs?date=YYYY-MM-DD&lines=500` to inspect activity logs.
+- Graph views:
+  - `/view-electric?range=day|week|month&date=YYYY-MM-DD`
+  - `/view-gas?range=day|week|month&date=YYYY-MM-DD`
+
+### Idempotency verification
+Run the same import twice for the same period:
+```bash
+npm run fetch:auto
+npm run fetch:auto
+```
+Then verify row counts stay stable:
+```bash
+psql -d octopus_db -c "SELECT COUNT(*) FROM electric_consumption;"
+psql -d octopus_db -c "SELECT COUNT(*) FROM gas_consumption;"
+```
+
+
+### Inspect schema/tables/permissions (for adapting to your DB role)
+Use:
+```bash
+npm run db:inspect
+```
+
+This prints the current user, search path, schema-level `USAGE/CREATE` privileges, table/column layout, and table privileges for the current user.
+
+
+## Interactive monthly backfill (manual Y/N confirmation)
+Use:
+```bash
+npm run fetch:monthly:interactive -- --start-month 2024-11 --max-months 12
+```
+
+Behavior:
+- Starts from `--start-month` when provided, otherwise current month, then walks backwards month-by-month.
+- Prompts for each month: import (`Y`), skip (`N`), or quit (`Q`).
+- After each import it prints inserted/updated counts for electric and gas.
+- Writes a month-by-month JSON report to `./reports/monthly_import_<timestamp>.json`.
+
+
+## Local notification endpoint module
+- Module: `lib/localNotifier.js`
+- Default endpoint: `http://localhost:55000/api/notify`
+- Payload format:
+  - required: `title`, `body`, `sendNow` (defaults to `true`)
+  - optional: `html` (preferred for simple styled notifications) OR `url` (for complex interactions)
+
+Live endpoint checks (sends real notifications to configured local endpoint):
+```bash
+npm run test:basic-notification
+npm run test:url-notification
+```
+
+
+## Usage summary notifications
+- Weekly summary notification (last 7 days up to most recent imported common fuel date):
+```bash
+npm run usage:last-7-days
+```
+This includes:
+- total electric/gas kWh and cost,
+- day-by-day table of electric/gas kWh,
+- comparison to previous 7-day cost window.
+
+- Last calendar month summary notification:
+```bash
+npm run usage:last-month
+```
+This includes:
+- total electric/gas kWh and cost,
+- top 3 gas days and top 3 electric days,
+- delta vs previous month (kWh and cost).
+
+## Error notification helper
+- Helper: `localErrorNotify(errorType, errorDescription, { logFile?, url? })` in `lib/localNotifier.js`.
+- Test trigger:
+```bash
+npm run test:error_notification
+```
+
+
+## Interrogate DB vs Octopus raw data
+Use:
+```bash
+npm run interrogate -- --start 2024-01-01T00:00:00Z --end 2024-02-01T00:00:00Z --source both
+```
+
+This will:
+- print human-readable CLI tables for each selected fuel,
+- show tariff/product periods detected for that range,
+- compare DB interval rows vs Octopus API interval rows,
+- highlight mismatches (missing in DB/API or value mismatches),
+- export full raw/intermediate data to `reports/interrogation_dd_mm_yy_hh_mm.json`.
+
+
+### New `fetch:auto` behavior
+`npm run fetch:auto` now:
+- finds latest common import timestamp across `electric_consumption` and `gas_consumption`,
+- imports from 24h before that point to now (to catch retrospective API price/rate changes),
+- updates prices using importer logic,
+- sends a success notification with gas/electric usage and costs over the last 3 days.
