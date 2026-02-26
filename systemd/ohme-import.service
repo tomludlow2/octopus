@@ -1,0 +1,20 @@
+[Unit]
+Description=Octopus/Ohme - Import raw Ohme power events from Home Assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+Group=pi
+WorkingDirectory=/workspace/octopus
+Environment=NODE_ENV=production
+# Optional: load HA_TOKEN/HA_HOST and DB variables from here
+# EnvironmentFile=/etc/default/octopus-ohme
+ExecStart=/usr/bin/npm run ha:store:ohme_power
+StandardOutput=append:/workspace/octopus/logs/systemd-ohme-import.log
+StandardError=append:/workspace/octopus/logs/systemd-ohme-import.log
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Octopus/Ohme - Price grouped Ohme sessions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+Group=pi
+WorkingDirectory=/workspace/octopus
+Environment=NODE_ENV=production
+# Default behavior intentionally uses assumed 7p/kWh
+ExecStart=/usr/bin/npm run ohme:price-groups -- --limit 500 --assumed-rate-p 7.0
+StandardOutput=append:/workspace/octopus/logs/systemd-ohme-price.log
+StandardError=append:/workspace/octopus/logs/systemd-ohme-price.log
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
