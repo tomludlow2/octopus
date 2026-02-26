@@ -98,6 +98,9 @@ See `SERVER_SETUP.md` for a full endpoint/page reference and auth details.
 - `npm run server:enable_codex` → switch auth to `server/web_users_codex.json` and restart `octopus_web_server`
 - `npm run server:disable_codex` → switch auth to `server/web_users.json` and restart `octopus_web_server`
 - `npm run audit:octopus -- --mode=full|regular|spot --fuel=electric|gas|both [--start=YYYY-MM] [--end=YYYY-MM] [--seed=123] [--notify-uncertain]`
+- `scripts/run-reprice-window.sh` → wrapper for rolling `usage:reprice` window (used by systemd)
+- `scripts/run-audit-window.sh` → wrapper for `audit:octopus` mode/fuel/seed flags (used by systemd)
+- `scripts/run-gap-window.sh` → wrapper for `db:gaps` + `gaps:import` rolling window (used by systemd)
 
 - Generate hashed credentials for web auth: `node server/generate_password_hash.js "<password>"`
 
