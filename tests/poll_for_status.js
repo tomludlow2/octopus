@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 function loadHaConfig() {
-    const configPath = path.join(__dirname, '../server_config.json');
+    const configPath = path.join(__dirname, '../server/server_config.json');
     let fileConfig = {};
 
     if (fs.existsSync(configPath)) {
@@ -14,7 +14,7 @@ function loadHaConfig() {
     const token = process.env.HA_TOKEN || fileConfig.token;
 
     if (!token) {
-        throw new Error('Missing HA token. Set HA_TOKEN env var or provide server_config.json with token.');
+        throw new Error('Missing HA token. Set HA_TOKEN env var or provide server/server_config.json with token.');
     }
 
     return { haHost, token };
