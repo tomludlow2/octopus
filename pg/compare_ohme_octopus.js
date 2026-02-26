@@ -6,6 +6,25 @@ const { splitIntoHalfHourBuckets } = require('../lib/ohmePowerUtils');
 
 const dbConfig = loadDbConfig();
 
+
+function parseArgs(argv) {
+    const args = { limit: 8 };
+
+    for (let i = 2; i < argv.length; i += 1) {
+        const token = argv[i];
+        const next = argv[i + 1];
+
+        if (token === '--limit' && next) {
+            const parsed = Number(next);
+            if (Number.isFinite(parsed) && parsed > 0) {
+                args.limit = Math.floor(parsed);
+            }
+        }
+    }
+
+    return args;
+}
+
 async function ensureOhmeTable(client) {
     await client.query(`
         CREATE TABLE IF NOT EXISTS ohme_charge_events (
@@ -16,6 +35,7 @@ async function ensureOhmeTable(client) {
             kwh_estimated NUMERIC(12, 6) NOT NULL DEFAULT 0,
             cross_checked BOOLEAN NOT NULL DEFAULT FALSE,
             price NUMERIC(12, 6),
+    vehicle TEXT NOT NULL DEFAULT 'unknown' CHECK (vehicle IN ('Audi', 'BMW', 'unknown')),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (charge_started, charge_ended)
@@ -65,13 +85,13 @@ async function fetchOctopusKwhForRange(client, rangeStart, rangeEnd) {
     return Number(result.rows[0].octopus_kwh || 0);
 }
 
-async function runComparison() {
+async function runComparison(limit = 8) {
     const client = new Client(dbConfig);
     await client.connect();
 
     try {
         await ensureOhmeTable(client);
-        const events = await fetchRecentChargeEvents(client, 8);
+        const events = await fetchRecentChargeEvents(client, limit);
 
         if (events.length === 0) {
             console.log('No rows found in ohme_charge_events. Run npm run ha:store:ohme_power first.');
@@ -115,7 +135,8 @@ async function runComparison() {
 }
 
 if (require.main === module) {
-    runComparison().catch((error) => {
+    const args = parseArgs(process.argv);
+    runComparison(args.limit).catch((error) => {
         console.error('Failed to compare Ohme and Octopus intervals:', error.message);
         process.exitCode = 1;
     });
