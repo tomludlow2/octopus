@@ -36,7 +36,8 @@
     "legacy:charge-event-unit-rates": "node lib/fetchLegacyChargeEventUnitRates.js",
     "ha:compare-ohme-octopus": "node pg/compare_ohme_octopus.js",
     "ohme:group-events": "node lib/groupOhmeChargeEvents.js",
-    "ohme:price-groups": "node lib/priceOhmeGroupedEvents.js"
+    "ohme:price-groups": "node lib/priceOhmeGroupedEvents.js",
+    "ohme:identify-audi-events": "node lib/identifyAudiLikelihoodForOhmeGroups.js"
   },
   "author": "",
   "license": "ISC",

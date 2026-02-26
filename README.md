@@ -98,6 +98,16 @@ See `SERVER_SETUP.md` for a full endpoint/page reference and auth details.
 - `npm run server:enable_codex` → switch auth to `server/web_users_codex.json` and restart `octopus_web_server`
 - `npm run server:disable_codex` → switch auth to `server/web_users.json` and restart `octopus_web_server`
 - `npm run audit:octopus -- --mode=full|regular|spot --fuel=electric|gas|both [--start=YYYY-MM] [--end=YYYY-MM] [--seed=123] [--notify-uncertain]`
+- `npm run ha:poll:status` → poll last 7 days of `sensor.ohme_epod_status` and infer start/end/duration
+- `npm run ha:poll:power` → poll last 7 days of `sensor.ohme_epod_power` and infer start/end/duration + kWh
+- `npm run ha:poll:octopus-accumulative` → export normalized 7-day HA history JSON for Octopus accumulative sensor
+- `npm run ha:store:ohme_power` → ingest inferred raw Ohme charge events into `ohme_charge_events`
+- `npm run ohme:group-events -- --merge-gap-minutes 15 [--grouping-version v1_gap15]` → group fragmented raw Ohme rows into canonical sessions
+- `npm run ohme:price-groups -- [--limit 500] [--assumed-rate-p 7.0] [--use-octopus-api]` → price grouped sessions (default assumed 7p/kWh)
+- `npm run ha:compare-ohme-octopus` / `npm run db:compare-ohme-octopus` → compare grouped Ohme sessions with Octopus consumption slots
+- `npm run fetch:charge-event-unit-rates` → inspect bucket-level unit rates for grouped Ohme sessions
+- `npm run legacy:charge-event-unit-rates` → inspect bucket-level unit rates for legacy `charging_events` rows
+- `npm run ohme:identify-audi-events -- [--window-minutes 30]` → produce Audi-vs-non-Audi likelihood ratios for grouped sessions using Audi SOC trend data
 - `scripts/run-reprice-window.sh` → wrapper for rolling `usage:reprice` window (used by systemd)
 - `scripts/run-audit-window.sh` → wrapper for `audit:octopus` mode/fuel/seed flags (used by systemd)
 - `scripts/run-gap-window.sh` → wrapper for `db:gaps` + `gaps:import` rolling window (used by systemd)
