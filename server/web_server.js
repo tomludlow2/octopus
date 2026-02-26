@@ -841,70 +841,81 @@ app.get('/view-ohme-events', async (req, res) => {
     const limit = [10, 25, 50].includes(rawLimit) ? rawLimit : 10;
     const page = Math.max(1, Number(req.query.page) || 1);
     const offset = (page - 1) * limit;
-    const vehicleFilter = ['Audi', 'BMW', 'unknown', 'all'].includes(req.query.vehicle)
-        ? req.query.vehicle
-        : 'all';
 
     try {
         await client.connect();
 
         await client.query(`
-            CREATE TABLE IF NOT EXISTS ohme_charge_events (
+            CREATE TABLE IF NOT EXISTS ohme_charge_event_groups (
                 id BIGSERIAL PRIMARY KEY,
-                charge_started TIMESTAMPTZ NOT NULL,
-                charge_ended TIMESTAMPTZ NOT NULL,
+                group_started TIMESTAMPTZ NOT NULL,
+                group_ended TIMESTAMPTZ NOT NULL,
                 duration_minutes INTEGER NOT NULL CHECK (duration_minutes >= 0),
-                kwh_estimated NUMERIC(12, 6) NOT NULL DEFAULT 0,
+                energy_kwh NUMERIC(12, 6) NOT NULL DEFAULT 0,
                 cross_checked BOOLEAN NOT NULL DEFAULT FALSE,
-                price NUMERIC(12, 6),
                 vehicle TEXT NOT NULL DEFAULT 'unknown' CHECK (vehicle IN ('Audi', 'BMW', 'unknown')),
+                grouping_version TEXT NOT NULL DEFAULT 'v1_gap15',
+                merge_gap_minutes INTEGER NOT NULL DEFAULT 15,
+                pricing_source TEXT,
+                estimated_cost_gbp NUMERIC(12, 6),
+                assumed_rate_p_per_kwh NUMERIC(12, 6) NOT NULL DEFAULT 7.0,
+                assumed_cost_gbp NUMERIC(12, 6),
+                billed_cost_gbp NUMERIC(12, 6),
+                billed_checked_at TIMESTAMPTZ,
+                billing_notes TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (charge_started, charge_ended)
+                UNIQUE (group_started, group_ended, grouping_version)
             );
         `);
 
-        const whereClause = vehicleFilter === 'all' ? '' : 'WHERE vehicle = $1';
-        const queryParams = vehicleFilter === 'all' ? [limit, offset] : [vehicleFilter, limit, offset];
-        const limitPlaceholder = vehicleFilter === 'all' ? '$1' : '$2';
-        const offsetPlaceholder = vehicleFilter === 'all' ? '$2' : '$3';
-
-        const result = await client.query(
-            `SELECT id, charge_started, charge_ended, duration_minutes, kwh_estimated, cross_checked, vehicle
-             FROM ohme_charge_events
-             ${whereClause}
-             ORDER BY charge_started DESC
-             LIMIT ${limitPlaceholder}
-             OFFSET ${offsetPlaceholder}`,
-            queryParams
+        const eventsResult = await client.query(
+            `SELECT id, group_started, group_ended, duration_minutes, energy_kwh, cross_checked, vehicle,
+                    COALESCE(billed_cost_gbp, estimated_cost_gbp, assumed_cost_gbp, ROUND((energy_kwh * 0.07)::numeric, 6)) AS display_cost_gbp
+             FROM ohme_charge_event_groups
+             ORDER BY group_started DESC
+             LIMIT $1 OFFSET $2`,
+            [limit, offset]
         );
 
-        const countResult = await client.query(
-            `SELECT COUNT(*)::int AS total_rows
-             FROM ohme_charge_events
-             ${whereClause}`,
-            vehicleFilter === 'all' ? [] : [vehicleFilter]
-        );
-
+        const countResult = await client.query('SELECT COUNT(*)::int AS total_rows FROM ohme_charge_event_groups');
         const totalRows = countResult.rows[0]?.total_rows || 0;
         const totalPages = Math.max(1, Math.ceil(totalRows / limit));
 
-        const rowsHtml = result.rows.map((row) => {
-            const start = new Date(row.charge_started);
-            const end = new Date(row.charge_ended);
+        const totalsResult = await client.query(`
+            SELECT vehicle,
+                   SUM(CASE WHEN group_started >= NOW() - INTERVAL '7 day' THEN energy_kwh ELSE 0 END)::numeric(12,3) AS week_kwh,
+                   SUM(CASE WHEN group_started >= NOW() - INTERVAL '7 day' THEN COALESCE(billed_cost_gbp, estimated_cost_gbp, assumed_cost_gbp, energy_kwh * 0.07) ELSE 0 END)::numeric(12,2) AS week_cost,
+                   SUM(CASE WHEN group_started >= NOW() - INTERVAL '1 month' THEN energy_kwh ELSE 0 END)::numeric(12,3) AS month_kwh,
+                   SUM(CASE WHEN group_started >= NOW() - INTERVAL '1 month' THEN COALESCE(billed_cost_gbp, estimated_cost_gbp, assumed_cost_gbp, energy_kwh * 0.07) ELSE 0 END)::numeric(12,2) AS month_cost,
+                   SUM(CASE WHEN group_started >= NOW() - INTERVAL '3 month' THEN energy_kwh ELSE 0 END)::numeric(12,3) AS quarter_kwh,
+                   SUM(CASE WHEN group_started >= NOW() - INTERVAL '3 month' THEN COALESCE(billed_cost_gbp, estimated_cost_gbp, assumed_cost_gbp, energy_kwh * 0.07) ELSE 0 END)::numeric(12,2) AS quarter_cost
+            FROM ohme_charge_event_groups
+            GROUP BY vehicle
+        `);
+
+        const totalsMap = new Map(totalsResult.rows.map((r) => [r.vehicle, r]));
+        const carSummaries = ['Audi', 'BMW'].map((vehicle) => totalsMap.get(vehicle) || {
+            vehicle, week_kwh: 0, week_cost: 0, month_kwh: 0, month_cost: 0, quarter_kwh: 0, quarter_cost: 0
+        });
+
+        const audiRows = eventsResult.rows.filter((r) => r.vehicle === 'Audi');
+        const bmwRows = eventsResult.rows.filter((r) => r.vehicle === 'BMW');
+
+        const rowToHtml = (row) => {
+            const start = new Date(row.group_started);
+            const end = new Date(row.group_ended);
             const startLabel = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
             const endLabel = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-            const kwh = Number(row.kwh_estimated || 0);
-            const costGbp = (kwh * 0.07).toFixed(2);
-
+            const dateLabel = start.toLocaleDateString('en-GB');
             return `
-                <tr data-vehicle="${row.vehicle}" data-start="${start.toISOString()}" data-kwh="${kwh.toFixed(3)}" data-cost="${costGbp}">
+                <tr>
                     <td>${row.id}</td>
-                    <td>${start.toLocaleDateString('en-GB')} ${startLabel}</td>
+                    <td>${dateLabel} ${startLabel}</td>
                     <td>${end.toLocaleDateString('en-GB')} ${endLabel}</td>
                     <td>${row.duration_minutes}</td>
-                    <td>${kwh.toFixed(3)}</td>
-                    <td>£${costGbp}</td>
+                    <td>${Number(row.energy_kwh || 0).toFixed(3)}</td>
+                    <td>£${Number(row.display_cost_gbp || 0).toFixed(2)}</td>
                     <td>
                         <div class="form-check form-switch">
                             <input class="form-check-input js-cross-check" type="checkbox" data-id="${row.id}" ${row.cross_checked ? 'checked' : ''}>
@@ -919,21 +930,20 @@ app.get('/view-ohme-events', async (req, res) => {
                     </td>
                 </tr>
             `;
-        }).join('');
+        };
 
-        const chartPoints = result.rows
+        const chartPoints = eventsResult.rows
             .map((row) => ({
-                x: new Date(row.charge_started).toISOString(),
-                y: Number(row.kwh_estimated || 0)
+                x: new Date(row.group_started).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+                y: Number(row.energy_kwh || 0)
             }))
-            .sort((a, b) => new Date(a.x) - new Date(b.x));
+            .reverse();
 
         const buildPageLink = (targetPage) => {
             const params = new URLSearchParams();
             params.set('page', String(targetPage));
             params.set('limit', String(limit));
-            params.set('vehicle', vehicleFilter);
-            return `/view-ohme-events?\${params.toString()}`;
+            return `/view-ohme-events?${params.toString()}`;
         };
 
         res.send(`<!DOCTYPE html>
@@ -947,13 +957,12 @@ app.get('/view-ohme-events', async (req, res) => {
         body { background: #f4f6fa; }
         .summary-card { border: 0; box-shadow: 0 0.125rem 0.5rem rgba(0,0,0,.08); }
         .table-wrap { overflow-x:auto; }
-        .filter-input { width: 100%; min-width: 90px; }
     </style>
 </head>
 <body>
     <main class="container-fluid px-3 px-md-4 py-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-            <h1 class="h3 mb-2 mb-md-0">Ohme Charge Events</h1>
+            <h1 class="h3 mb-2 mb-md-0">Ohme Grouped Charge Events</h1>
             <div class="btn-group" role="group">
                 <a class="btn btn-outline-secondary" href="/view-electric">Electric</a>
                 <a class="btn btn-outline-secondary" href="/view-gas">Gas</a>
@@ -972,23 +981,30 @@ app.get('/view-ohme-events', async (req, res) => {
                             <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
                         </select>
                     </div>
-                    <div class="col-6 col-md-3">
-                        <label class="form-label" for="vehicleFilter">Vehicle</label>
-                        <select id="vehicleFilter" class="form-select">
-                            <option value="all" ${vehicleFilter === 'all' ? 'selected' : ''}>All</option>
-                            <option value="Audi" ${vehicleFilter === 'Audi' ? 'selected' : ''}>Audi</option>
-                            <option value="BMW" ${vehicleFilter === 'BMW' ? 'selected' : ''}>BMW</option>
-                            <option value="unknown" ${vehicleFilter === 'unknown' ? 'selected' : ''}>unknown</option>
-                        </select>
-                    </div>
-                    <div class="col-12 col-md-7 d-flex justify-content-md-end gap-2">
+                    <div class="col-12 col-md-10 d-flex justify-content-md-end gap-2">
                         <a class="btn btn-outline-dark ${page <= 1 ? 'disabled' : ''}" href="${buildPageLink(Math.max(1, page - 1))}">Older</a>
                         <a class="btn btn-outline-dark ${page >= totalPages ? 'disabled' : ''}" href="${buildPageLink(Math.min(totalPages, page + 1))}">Newer</a>
-                        <span class="align-self-center text-muted">Page ${page} of ${totalPages} (${totalRows} rows)</span>
+                        <span class="align-self-center text-muted">Page ${page} of ${totalPages} (${totalRows} groups)</span>
                     </div>
                 </div>
-                <p class="mt-3 mb-0">Cost uses fixed 7p/kWh for display only (does not write to <code>price</code>).</p>
+                <p class="mt-3 mb-0">Costs use Octopus-priced totals when available, otherwise 7p/kWh estimate.</p>
             </div>
+        </section>
+
+        <section class="row g-3 mb-3">
+            ${carSummaries.map((s) => `
+            <div class="col-12 col-md-6">
+                <div class="card summary-card">
+                    <div class="card-body">
+                        <h2 class="h5">${s.vehicle} Totals</h2>
+                        <div class="row">
+                            <div class="col-4"><div class="text-muted">Week</div><div>${Number(s.week_kwh || 0).toFixed(3)} kWh / £${Number(s.week_cost || 0).toFixed(2)}</div></div>
+                            <div class="col-4"><div class="text-muted">Month</div><div>${Number(s.month_kwh || 0).toFixed(3)} kWh / £${Number(s.month_cost || 0).toFixed(2)}</div></div>
+                            <div class="col-4"><div class="text-muted">Quarter</div><div>${Number(s.quarter_kwh || 0).toFixed(3)} kWh / £${Number(s.quarter_cost || 0).toFixed(2)}</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>`).join('')}
         </section>
 
         <section class="card mb-3">
@@ -997,33 +1013,28 @@ app.get('/view-ohme-events', async (req, res) => {
             </div>
         </section>
 
-        <section class="card">
-            <div class="card-body table-wrap">
-                <table class="table table-sm table-striped table-hover" id="ohmeEventsTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Start</th>
-                            <th>End</th>
-                            <th>Duration (min)</th>
-                            <th>kWh</th>
-                            <th>Cost (£ @ 7p)</th>
-                            <th>Cross Checked</th>
-                            <th>Vehicle</th>
-                        </tr>
-                        <tr>
-                            <th><input class="form-control form-control-sm filter-input" data-column="0" placeholder="Filter ID" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="1" placeholder="Filter start" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="2" placeholder="Filter end" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="3" placeholder="Filter duration" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="4" placeholder="Filter kWh" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="5" placeholder="Filter cost" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="6" placeholder="Filter checked" /></th>
-                            <th><input class="form-control form-control-sm filter-input" data-column="7" placeholder="Filter vehicle" /></th>
-                        </tr>
-                    </thead>
-                    <tbody>${rowsHtml}</tbody>
-                </table>
+        <section class="row g-3">
+            <div class="col-12 col-lg-6">
+                <div class="card">
+                    <div class="card-header"><strong>Audi recent sessions</strong></div>
+                    <div class="card-body table-wrap">
+                        <table class="table table-sm table-striped table-hover" id="audiTable">
+                            <thead><tr><th>ID</th><th>Start</th><th>End</th><th>Min</th><th>kWh</th><th>£</th><th>Checked</th><th>Vehicle</th></tr></thead>
+                            <tbody>${audiRows.map(rowToHtml).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-6">
+                <div class="card">
+                    <div class="card-header"><strong>BMW recent sessions</strong></div>
+                    <div class="card-body table-wrap">
+                        <table class="table table-sm table-striped table-hover" id="bmwTable">
+                            <thead><tr><th>ID</th><th>Start</th><th>End</th><th>Min</th><th>kWh</th><th>£</th><th>Checked</th><th>Vehicle</th></tr></thead>
+                            <tbody>${bmwRows.map(rowToHtml).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
@@ -1032,32 +1043,25 @@ app.get('/view-ohme-events', async (req, res) => {
     <script src="/vendor/chart.js/chart.umd.js"></script>
     <script>
         const chartPoints = ${JSON.stringify(chartPoints)};
-
         const ctx = document.getElementById('ohmeEventsChart').getContext('2d');
-        const chartLabels = chartPoints.map((p) => new Date(p.x).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
-        const chartValues = chartPoints.map((p) => p.y);
 
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: chartLabels,
+                labels: chartPoints.map((p) => p.x),
                 datasets: [{
-                    label: 'Ohme Event kWh',
-                    data: chartValues,
+                    label: 'Grouped session kWh',
+                    data: chartPoints.map((p) => p.y),
                     borderColor: '#0d6efd',
-                    backgroundColor: 'rgba(13, 110, 253, 0.15)',
+                    backgroundColor: 'rgba(13,110,253,0.15)',
                     pointRadius: 3,
                     tension: 0.2
                 }]
             },
             options: {
                 scales: {
-                    x: {
-                        title: { display: true, text: 'Time/Date' }
-                    },
-                    y: {
-                        title: { display: true, text: 'kWh' }
-                    }
+                    x: { title: { display: true, text: 'Time/Date' } },
+                    y: { title: { display: true, text: 'kWh' } }
                 }
             }
         });
@@ -1074,19 +1078,12 @@ app.get('/view-ohme-events', async (req, res) => {
             }
         }
 
-        const limitSelect = document.getElementById('limitSelect');
-        const vehicleFilter = document.getElementById('vehicleFilter');
-
-        function rebuildQuery() {
+        document.getElementById('limitSelect').addEventListener('change', (e) => {
             const params = new URLSearchParams(window.location.search);
-            params.set('limit', limitSelect.value);
-            params.set('vehicle', vehicleFilter.value);
+            params.set('limit', e.target.value);
             params.set('page', '1');
             window.location.href = '/view-ohme-events?' + params.toString();
-        }
-
-        limitSelect.addEventListener('change', rebuildQuery);
-        vehicleFilter.addEventListener('change', rebuildQuery);
+        });
 
         document.querySelectorAll('.js-cross-check').forEach((el) => {
             el.addEventListener('change', async () => {
@@ -1109,32 +1106,11 @@ app.get('/view-ohme-events', async (req, res) => {
                         id: Number(el.dataset.id),
                         vehicle: el.value
                     });
+                    window.location.reload();
                 } catch (error) {
                     alert('Failed to update vehicle: ' + error.message);
                 }
             });
-        });
-
-        const table = document.getElementById('ohmeEventsTable');
-        const filters = Array.from(document.querySelectorAll('.filter-input'));
-
-        function applyFilters() {
-            const rows = Array.from(table.querySelectorAll('tbody tr'));
-            rows.forEach((row) => {
-                const cells = Array.from(row.querySelectorAll('td'));
-                const isMatch = filters.every((filterInput) => {
-                    const value = filterInput.value.trim().toLowerCase();
-                    if (!value) return true;
-                    const column = Number(filterInput.dataset.column);
-                    const text = (cells[column]?.innerText || '').toLowerCase();
-                    return text.includes(value);
-                });
-                row.style.display = isMatch ? '' : 'none';
-            });
-        }
-
-        filters.forEach((input) => {
-            input.addEventListener('input', applyFilters);
         });
     </script>
 </body>
@@ -1158,7 +1134,11 @@ app.post('/api/ohme-events/update-cross-checked', async (req, res) => {
     try {
         await client.connect();
         const result = await client.query(
-            'UPDATE ohme_charge_events SET cross_checked = $1, updated_at = NOW() WHERE id = $2',
+            `UPDATE ohme_charge_event_groups
+             SET cross_checked = $1,
+                 billed_checked_at = CASE WHEN $1 THEN NOW() ELSE billed_checked_at END,
+                 updated_at = NOW()
+             WHERE id = $2`,
             [Boolean(cross_checked), id]
         );
 
@@ -1191,7 +1171,7 @@ app.post('/api/ohme-events/update-vehicle', async (req, res) => {
     try {
         await client.connect();
         const result = await client.query(
-            'UPDATE ohme_charge_events SET vehicle = $1, updated_at = NOW() WHERE id = $2',
+            'UPDATE ohme_charge_event_groups SET vehicle = $1, updated_at = NOW() WHERE id = $2',
             [vehicle, id]
         );
 
