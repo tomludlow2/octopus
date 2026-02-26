@@ -837,6 +837,14 @@ app.get('/api/usage/:fuel/export', async (req, res) => {
 app.get('/view-ohme-events', async (req, res) => {
     const client = new Client(dbConfig);
 
+    const rawLimit = Number(req.query.limit);
+    const limit = [10, 25, 50].includes(rawLimit) ? rawLimit : 10;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const offset = (page - 1) * limit;
+    const vehicleFilter = ['Audi', 'BMW', 'unknown', 'all'].includes(req.query.vehicle)
+        ? req.query.vehicle
+        : 'all';
+
     try {
         await client.connect();
 
@@ -856,12 +864,30 @@ app.get('/view-ohme-events', async (req, res) => {
             );
         `);
 
-        const result = await client.query(`
-            SELECT id, charge_started, charge_ended, duration_minutes, kwh_estimated, cross_checked, vehicle
-            FROM ohme_charge_events
-            ORDER BY charge_started DESC
-            LIMIT 10
-        `);
+        const whereClause = vehicleFilter === 'all' ? '' : 'WHERE vehicle = $1';
+        const queryParams = vehicleFilter === 'all' ? [limit, offset] : [vehicleFilter, limit, offset];
+        const limitPlaceholder = vehicleFilter === 'all' ? '$1' : '$2';
+        const offsetPlaceholder = vehicleFilter === 'all' ? '$2' : '$3';
+
+        const result = await client.query(
+            `SELECT id, charge_started, charge_ended, duration_minutes, kwh_estimated, cross_checked, vehicle
+             FROM ohme_charge_events
+             ${whereClause}
+             ORDER BY charge_started DESC
+             LIMIT ${limitPlaceholder}
+             OFFSET ${offsetPlaceholder}`,
+            queryParams
+        );
+
+        const countResult = await client.query(
+            `SELECT COUNT(*)::int AS total_rows
+             FROM ohme_charge_events
+             ${whereClause}`,
+            vehicleFilter === 'all' ? [] : [vehicleFilter]
+        );
+
+        const totalRows = countResult.rows[0]?.total_rows || 0;
+        const totalPages = Math.max(1, Math.ceil(totalRows / limit));
 
         const rowsHtml = result.rows.map((row) => {
             const start = new Date(row.charge_started);
@@ -872,7 +898,7 @@ app.get('/view-ohme-events', async (req, res) => {
             const costGbp = (kwh * 0.07).toFixed(2);
 
             return `
-                <tr>
+                <tr data-vehicle="${row.vehicle}" data-start="${start.toISOString()}" data-kwh="${kwh.toFixed(3)}" data-cost="${costGbp}">
                     <td>${row.id}</td>
                     <td>${start.toLocaleDateString('en-GB')} ${startLabel}</td>
                     <td>${end.toLocaleDateString('en-GB')} ${endLabel}</td>
@@ -895,6 +921,21 @@ app.get('/view-ohme-events', async (req, res) => {
             `;
         }).join('');
 
+        const chartPoints = result.rows
+            .map((row) => ({
+                x: new Date(row.charge_started).toISOString(),
+                y: Number(row.kwh_estimated || 0)
+            }))
+            .sort((a, b) => new Date(a.x) - new Date(b.x));
+
+        const buildPageLink = (targetPage) => {
+            const params = new URLSearchParams();
+            params.set('page', String(targetPage));
+            params.set('limit', String(limit));
+            params.set('vehicle', vehicleFilter);
+            return `/view-ohme-events?\${params.toString()}`;
+        };
+
         res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -906,6 +947,7 @@ app.get('/view-ohme-events', async (req, res) => {
         body { background: #f4f6fa; }
         .summary-card { border: 0; box-shadow: 0 0.125rem 0.5rem rgba(0,0,0,.08); }
         .table-wrap { overflow-x:auto; }
+        .filter-input { width: 100%; min-width: 90px; }
     </style>
 </head>
 <body>
@@ -921,7 +963,37 @@ app.get('/view-ohme-events', async (req, res) => {
 
         <section class="card mb-3 summary-card">
             <div class="card-body">
-                <p class="mb-0">Showing 10 most recent events. Cost column currently uses fixed 7p/kWh and does not update stored <code>price</code>.</p>
+                <div class="row g-2 align-items-end">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label" for="limitSelect">Rows</label>
+                        <select id="limitSelect" class="form-select">
+                            <option value="10" ${limit === 10 ? 'selected' : ''}>10</option>
+                            <option value="25" ${limit === 25 ? 'selected' : ''}>25</option>
+                            <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label" for="vehicleFilter">Vehicle</label>
+                        <select id="vehicleFilter" class="form-select">
+                            <option value="all" ${vehicleFilter === 'all' ? 'selected' : ''}>All</option>
+                            <option value="Audi" ${vehicleFilter === 'Audi' ? 'selected' : ''}>Audi</option>
+                            <option value="BMW" ${vehicleFilter === 'BMW' ? 'selected' : ''}>BMW</option>
+                            <option value="unknown" ${vehicleFilter === 'unknown' ? 'selected' : ''}>unknown</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-7 d-flex justify-content-md-end gap-2">
+                        <a class="btn btn-outline-dark ${page <= 1 ? 'disabled' : ''}" href="${buildPageLink(Math.max(1, page - 1))}">Older</a>
+                        <a class="btn btn-outline-dark ${page >= totalPages ? 'disabled' : ''}" href="${buildPageLink(Math.min(totalPages, page + 1))}">Newer</a>
+                        <span class="align-self-center text-muted">Page ${page} of ${totalPages} (${totalRows} rows)</span>
+                    </div>
+                </div>
+                <p class="mt-3 mb-0">Cost uses fixed 7p/kWh for display only (does not write to <code>price</code>).</p>
+            </div>
+        </section>
+
+        <section class="card mb-3">
+            <div class="card-body">
+                <canvas id="ohmeEventsChart" height="90"></canvas>
             </div>
         </section>
 
@@ -939,6 +1011,16 @@ app.get('/view-ohme-events', async (req, res) => {
                             <th>Cross Checked</th>
                             <th>Vehicle</th>
                         </tr>
+                        <tr>
+                            <th><input class="form-control form-control-sm filter-input" data-column="0" placeholder="Filter ID" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="1" placeholder="Filter start" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="2" placeholder="Filter end" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="3" placeholder="Filter duration" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="4" placeholder="Filter kWh" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="5" placeholder="Filter cost" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="6" placeholder="Filter checked" /></th>
+                            <th><input class="form-control form-control-sm filter-input" data-column="7" placeholder="Filter vehicle" /></th>
+                        </tr>
                     </thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
@@ -947,7 +1029,39 @@ app.get('/view-ohme-events', async (req, res) => {
     </main>
 
     <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="/vendor/chart.js/chart.umd.js"></script>
     <script>
+        const chartPoints = ${JSON.stringify(chartPoints)};
+
+        const ctx = document.getElementById('ohmeEventsChart').getContext('2d');
+        const chartLabels = chartPoints.map((p) => new Date(p.x).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
+        const chartValues = chartPoints.map((p) => p.y);
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Ohme Event kWh',
+                    data: chartValues,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.15)',
+                    pointRadius: 3,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Time/Date' }
+                    },
+                    y: {
+                        title: { display: true, text: 'kWh' }
+                    }
+                }
+            }
+        });
+
         async function postJson(url, body) {
             const response = await fetch(url, {
                 method: 'POST',
@@ -959,6 +1073,20 @@ app.get('/view-ohme-events', async (req, res) => {
                 throw new Error(txt || 'Request failed');
             }
         }
+
+        const limitSelect = document.getElementById('limitSelect');
+        const vehicleFilter = document.getElementById('vehicleFilter');
+
+        function rebuildQuery() {
+            const params = new URLSearchParams(window.location.search);
+            params.set('limit', limitSelect.value);
+            params.set('vehicle', vehicleFilter.value);
+            params.set('page', '1');
+            window.location.href = '/view-ohme-events?' + params.toString();
+        }
+
+        limitSelect.addEventListener('change', rebuildQuery);
+        vehicleFilter.addEventListener('change', rebuildQuery);
 
         document.querySelectorAll('.js-cross-check').forEach((el) => {
             el.addEventListener('change', async () => {
@@ -985,6 +1113,28 @@ app.get('/view-ohme-events', async (req, res) => {
                     alert('Failed to update vehicle: ' + error.message);
                 }
             });
+        });
+
+        const table = document.getElementById('ohmeEventsTable');
+        const filters = Array.from(document.querySelectorAll('.filter-input'));
+
+        function applyFilters() {
+            const rows = Array.from(table.querySelectorAll('tbody tr'));
+            rows.forEach((row) => {
+                const cells = Array.from(row.querySelectorAll('td'));
+                const isMatch = filters.every((filterInput) => {
+                    const value = filterInput.value.trim().toLowerCase();
+                    if (!value) return true;
+                    const column = Number(filterInput.dataset.column);
+                    const text = (cells[column]?.innerText || '').toLowerCase();
+                    return text.includes(value);
+                });
+                row.style.display = isMatch ? '' : 'none';
+            });
+        }
+
+        filters.forEach((input) => {
+            input.addEventListener('input', applyFilters);
         });
     </script>
 </body>
