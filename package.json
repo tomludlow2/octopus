@@ -33,7 +33,8 @@
     "ha:store:ohme_power": "node lib/storeOhmePowerEvents.js",
     "db:compare-ohme-octopus": "node pg/compare_ohme_octopus.js",
     "fetch:charge-event-unit-rates": "node lib/fetchChargeEventUnitRates.js",
-    "legacy:charge-event-unit-rates": "node lib/fetchLegacyChargeEventUnitRates.js"
+    "legacy:charge-event-unit-rates": "node lib/fetchLegacyChargeEventUnitRates.js",
+    "ha:compare-ohme-octopus": "node pg/compare_ohme_octopus.js"
   },
   "author": "",
   "license": "ISC",

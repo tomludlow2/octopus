@@ -2,10 +2,9 @@ const { Client } = require('pg');
 const Table = require('cli-table3');
 
 const { loadDbConfig } = require('../lib/loadDbConfig');
-const { allocateKwhAcrossBuckets } = require('../lib/ohmePowerUtils');
+const { splitIntoHalfHourBuckets } = require('../lib/ohmePowerUtils');
 
 const dbConfig = loadDbConfig();
-
 
 async function ensureOhmeTable(client) {
     await client.query(`
@@ -37,12 +36,30 @@ async function fetchRecentChargeEvents(client, limit = 8) {
     return result.rows.reverse();
 }
 
-async function fetchOctopusKwhForInterval(client, intervalStart, intervalEnd) {
+function getCoveredBucketBounds(chargeStarted, chargeEnded) {
+    const buckets = splitIntoHalfHourBuckets(chargeStarted, chargeEnded);
+
+    if (buckets.length === 0) {
+        return {
+            bucketStart: new Date(chargeStarted),
+            bucketEnd: new Date(chargeEnded),
+            bucketCount: 0
+        };
+    }
+
+    const bucketStart = buckets[0].bucket_start;
+    const lastBucketStart = buckets[buckets.length - 1].bucket_start;
+    const bucketEnd = new Date(lastBucketStart.getTime() + 30 * 60 * 1000);
+
+    return { bucketStart, bucketEnd, bucketCount: buckets.length };
+}
+
+async function fetchOctopusKwhForRange(client, rangeStart, rangeEnd) {
     const result = await client.query(
         `SELECT COALESCE(SUM(consumption_kwh), 0) AS octopus_kwh
          FROM electric_consumption
          WHERE start_time >= $1 AND end_time <= $2`,
-        [intervalStart.toISOString(), intervalEnd.toISOString()]
+        [rangeStart.toISOString(), rangeEnd.toISOString()]
     );
 
     return Number(result.rows[0].octopus_kwh || 0);
@@ -61,30 +78,37 @@ async function runComparison() {
             return;
         }
 
+        const table = new Table({
+            head: [
+                'Event ID',
+                'Charge Period',
+                'Covered Octopus Slot Range',
+                'Slot Count',
+                'Ohme Energy (kWh)',
+                'Octopus Energy (kWh)',
+                'Differential (kWh)'
+            ],
+            colWidths: [10, 50, 50, 12, 20, 22, 20]
+        });
+
         for (const event of events) {
-            const buckets = allocateKwhAcrossBuckets(event.charge_started, event.charge_ended, event.kwh_estimated);
+            const { bucketStart, bucketEnd, bucketCount } = getCoveredBucketBounds(event.charge_started, event.charge_ended);
+            const octopusKwh = await fetchOctopusKwhForRange(client, bucketStart, bucketEnd);
+            const ohmeKwh = Number(event.kwh_estimated || 0);
+            const differential = Number((ohmeKwh - octopusKwh).toFixed(6));
 
-            console.log(`\nCharge Event #${event.id} | ${new Date(event.charge_started).toISOString()} -> ${new Date(event.charge_ended).toISOString()} | duration=${event.duration_minutes}m | kWh=${event.kwh_estimated}`);
-
-            const table = new Table({
-                head: ['Interval (start/end)', 'Ohme Power Used (kWh)', 'Octopus Power Used (kWh)', 'Differential (kWh)'],
-                colWidths: [55, 24, 27, 20]
-            });
-
-            for (const bucket of buckets) {
-                const octopusKwh = await fetchOctopusKwhForInterval(client, bucket.interval_start, bucket.interval_end);
-                const differential = Number((bucket.ohme_kwh - octopusKwh).toFixed(6));
-
-                table.push([
-                    `${bucket.interval_start.toISOString()} -> ${bucket.interval_end.toISOString()}`,
-                    Number(bucket.ohme_kwh.toFixed(6)),
-                    Number(octopusKwh.toFixed(6)),
-                    differential
-                ]);
-            }
-
-            console.log(table.toString());
+            table.push([
+                event.id,
+                `${new Date(event.charge_started).toISOString()} -> ${new Date(event.charge_ended).toISOString()}`,
+                `${bucketStart.toISOString()} -> ${bucketEnd.toISOString()}`,
+                bucketCount,
+                Number(ohmeKwh.toFixed(6)),
+                Number(octopusKwh.toFixed(6)),
+                differential
+            ]);
         }
+
+        console.log(table.toString());
     } finally {
         await client.end();
     }
