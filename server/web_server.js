@@ -895,12 +895,13 @@ app.get('/view-ohme-events', async (req, res) => {
         `);
 
         const totalsMap = new Map(totalsResult.rows.map((r) => [r.vehicle, r]));
-        const carSummaries = ['Audi', 'BMW'].map((vehicle) => totalsMap.get(vehicle) || {
+        const carSummaries = ['Audi', 'BMW', 'unknown'].map((vehicle) => totalsMap.get(vehicle) || {
             vehicle, week_kwh: 0, week_cost: 0, month_kwh: 0, month_cost: 0, quarter_kwh: 0, quarter_cost: 0
         });
 
         const audiRows = eventsResult.rows.filter((r) => r.vehicle === 'Audi');
         const bmwRows = eventsResult.rows.filter((r) => r.vehicle === 'BMW');
+        const unknownRows = eventsResult.rows.filter((r) => r.vehicle === 'unknown');
 
         const rowToHtml = (row) => {
             const start = new Date(row.group_started);
@@ -963,6 +964,7 @@ app.get('/view-ohme-events', async (req, res) => {
     <main class="container-fluid px-3 px-md-4 py-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
             <h1 class="h3 mb-2 mb-md-0">Ohme Grouped Charge Events</h1>
+            <span class="badge bg-warning text-dark">Unknown sessions: ${unknownRows.length}</span>
             <div class="btn-group" role="group">
                 <a class="btn btn-outline-secondary" href="/view-electric">Electric</a>
                 <a class="btn btn-outline-secondary" href="/view-gas">Gas</a>
@@ -993,7 +995,7 @@ app.get('/view-ohme-events', async (req, res) => {
 
         <section class="row g-3 mb-3">
             ${carSummaries.map((s) => `
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-4">
                 <div class="card summary-card">
                     <div class="card-body">
                         <h2 class="h5">${s.vehicle} Totals</h2>
@@ -1036,6 +1038,22 @@ app.get('/view-ohme-events', async (req, res) => {
                     </div>
                 </div>
             </div>
+
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <strong>Unknown sessions (needs categorisation)</strong>
+                        <span class="badge bg-warning text-dark">${unknownRows.length}</span>
+                    </div>
+                    <div class="card-body table-wrap">
+                        <table class="table table-sm table-striped table-hover" id="unknownTable">
+                            <thead><tr><th>ID</th><th>Start</th><th>End</th><th>Min</th><th>kWh</th><th>£</th><th>Checked</th><th>Vehicle</th></tr></thead>
+                            <tbody>${unknownRows.map(rowToHtml).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </section>
     </main>
 
