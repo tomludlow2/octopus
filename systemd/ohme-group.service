@@ -1,0 +1,19 @@
+[Unit]
+Description=Octopus/Ohme - Group fragmented Ohme charge events
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+Group=pi
+WorkingDirectory=/workspace/octopus
+Environment=NODE_ENV=production
+# Optional: tune grouping gap in minutes
+ExecStart=/usr/bin/npm run ohme:group-events -- --merge-gap-minutes 15 --grouping-version v1_gap15
+StandardOutput=append:/workspace/octopus/logs/systemd-ohme-group.log
+StandardError=append:/workspace/octopus/logs/systemd-ohme-group.log
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

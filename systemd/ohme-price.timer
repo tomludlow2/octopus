@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer - price grouped Ohme sessions every 30 minutes
+
+[Timer]
+OnBootSec=7m
+OnUnitActiveSec=30m
+AccuracySec=30s
+Persistent=true
+Unit=ohme-price.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer - regroup Ohme events every 20 minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=20m
+AccuracySec=30s
+Persistent=true
+Unit=ohme-group.service
+
+[Install]
+WantedBy=timers.target
