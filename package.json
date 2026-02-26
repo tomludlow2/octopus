@@ -32,7 +32,8 @@
     "ha:poll:octopus-accumulative": "node tests/poll_for_octopus_accumulative_consumption.js",
     "ha:store:ohme_power": "node lib/storeOhmePowerEvents.js",
     "db:compare-ohme-octopus": "node pg/compare_ohme_octopus.js",
-    "fetch:charge-event-unit-rates": "node lib/fetchChargeEventUnitRates.js"
+    "fetch:charge-event-unit-rates": "node lib/fetchChargeEventUnitRates.js",
+    "legacy:charge-event-unit-rates": "node lib/fetchLegacyChargeEventUnitRates.js"
   },
   "author": "",
   "license": "ISC",
