@@ -39,14 +39,65 @@ function parseArgs(argv) {
         notifyUncertain: false
     };
 
-    argv.slice(2).forEach((token) => {
-        if (token.startsWith('--mode=')) args.mode = token.split('=')[1];
-        if (token.startsWith('--fuel=')) args.fuel = token.split('=')[1];
-        if (token.startsWith('--start=')) args.start = token.split('=')[1];
-        if (token.startsWith('--end=')) args.end = token.split('=')[1];
-        if (token.startsWith('--seed=')) args.seed = token.split('=')[1];
-        if (token === '--notify-uncertain') args.notifyUncertain = true;
-    });
+    for (let i = 2; i < argv.length; i += 1) {
+        const token = argv[i];
+        const next = argv[i + 1];
+
+        if (token === '--notify-uncertain') {
+            args.notifyUncertain = true;
+            continue;
+        }
+
+        if (token.startsWith('--mode=')) {
+            args.mode = token.split('=')[1];
+            continue;
+        }
+        if (token === '--mode' && next) {
+            args.mode = next;
+            i += 1;
+            continue;
+        }
+
+        if (token.startsWith('--fuel=')) {
+            args.fuel = token.split('=')[1];
+            continue;
+        }
+        if (token === '--fuel' && next) {
+            args.fuel = next;
+            i += 1;
+            continue;
+        }
+
+        if (token.startsWith('--start=')) {
+            args.start = token.split('=')[1];
+            continue;
+        }
+        if (token === '--start' && next) {
+            args.start = next;
+            i += 1;
+            continue;
+        }
+
+        if (token.startsWith('--end=')) {
+            args.end = token.split('=')[1];
+            continue;
+        }
+        if (token === '--end' && next) {
+            args.end = next;
+            i += 1;
+            continue;
+        }
+
+        if (token.startsWith('--seed=')) {
+            args.seed = token.split('=')[1];
+            continue;
+        }
+        if (token === '--seed' && next) {
+            args.seed = next;
+            i += 1;
+            continue;
+        }
+    }
 
     if (!['full', 'regular', 'spot'].includes(args.mode)) throw new Error('mode must be full|regular|spot');
     if (!['electric', 'gas', 'both'].includes(args.fuel)) throw new Error('fuel must be electric|gas|both');
@@ -118,11 +169,32 @@ async function fetchPostgresUsage(client, fuel, fromIso, toIso, bucket) {
         [fromIso, toIso]
     );
 
-    return q.rows.map((r) => ({
-        bucket: bucket === 'interval' ? new Date(r.bucket).toISOString() : new Date(`${r.bucket}T00:00:00Z`).toISOString(),
-        kwh: Number(r.kwh || 0),
-        cost_gbp: Number(r.cost_gbp || 0)
-    }));
+    return q.rows.map((r) => {
+        let bucketIso;
+        if (bucket === 'interval') {
+            bucketIso = new Date(r.bucket).toISOString();
+        } else {
+            const bucketDate = new Date(r.bucket);
+            if (Number.isNaN(bucketDate.getTime())) {
+                throw new Error(`Invalid DB day bucket value: ${r.bucket}`);
+            }
+            bucketIso = new Date(Date.UTC(
+                bucketDate.getUTCFullYear(),
+                bucketDate.getUTCMonth(),
+                bucketDate.getUTCDate(),
+                0,
+                0,
+                0,
+                0
+            )).toISOString();
+        }
+
+        return {
+            bucket: bucketIso,
+            kwh: Number(r.kwh || 0),
+            cost_gbp: Number(r.cost_gbp || 0)
+        };
+    });
 }
 
 function normalizeOctopusRows(rows) {
