@@ -833,6 +833,231 @@ app.get('/api/usage/:fuel/export', async (req, res) => {
     }
 });
 
+
+app.get('/view-ohme-events', async (req, res) => {
+    const client = new Client(dbConfig);
+
+    try {
+        await client.connect();
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ohme_charge_events (
+                id BIGSERIAL PRIMARY KEY,
+                charge_started TIMESTAMPTZ NOT NULL,
+                charge_ended TIMESTAMPTZ NOT NULL,
+                duration_minutes INTEGER NOT NULL CHECK (duration_minutes >= 0),
+                kwh_estimated NUMERIC(12, 6) NOT NULL DEFAULT 0,
+                cross_checked BOOLEAN NOT NULL DEFAULT FALSE,
+                price NUMERIC(12, 6),
+                vehicle TEXT NOT NULL DEFAULT 'unknown' CHECK (vehicle IN ('Audi', 'BMW', 'unknown')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (charge_started, charge_ended)
+            );
+        `);
+
+        const result = await client.query(`
+            SELECT id, charge_started, charge_ended, duration_minutes, kwh_estimated, cross_checked, vehicle
+            FROM ohme_charge_events
+            ORDER BY charge_started DESC
+            LIMIT 10
+        `);
+
+        const rowsHtml = result.rows.map((row) => {
+            const start = new Date(row.charge_started);
+            const end = new Date(row.charge_ended);
+            const startLabel = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const endLabel = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const kwh = Number(row.kwh_estimated || 0);
+            const costGbp = (kwh * 0.07).toFixed(2);
+
+            return `
+                <tr>
+                    <td>${row.id}</td>
+                    <td>${start.toLocaleDateString('en-GB')} ${startLabel}</td>
+                    <td>${end.toLocaleDateString('en-GB')} ${endLabel}</td>
+                    <td>${row.duration_minutes}</td>
+                    <td>${kwh.toFixed(3)}</td>
+                    <td>£${costGbp}</td>
+                    <td>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input js-cross-check" type="checkbox" data-id="${row.id}" ${row.cross_checked ? 'checked' : ''}>
+                        </div>
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm js-vehicle" data-id="${row.id}">
+                            <option value="Audi" ${row.vehicle === 'Audi' ? 'selected' : ''}>Audi</option>
+                            <option value="BMW" ${row.vehicle === 'BMW' ? 'selected' : ''}>BMW</option>
+                            <option value="unknown" ${row.vehicle === 'unknown' ? 'selected' : ''}>unknown</option>
+                        </select>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ohme Charge Events Dashboard</title>
+    <link rel="stylesheet" href="/vendor/bootstrap/css/bootstrap.min.css" />
+    <style>
+        body { background: #f4f6fa; }
+        .summary-card { border: 0; box-shadow: 0 0.125rem 0.5rem rgba(0,0,0,.08); }
+        .table-wrap { overflow-x:auto; }
+    </style>
+</head>
+<body>
+    <main class="container-fluid px-3 px-md-4 py-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+            <h1 class="h3 mb-2 mb-md-0">Ohme Charge Events</h1>
+            <div class="btn-group" role="group">
+                <a class="btn btn-outline-secondary" href="/view-electric">Electric</a>
+                <a class="btn btn-outline-secondary" href="/view-gas">Gas</a>
+                <a class="btn btn-outline-secondary" href="/view_charging_events">Legacy Charging</a>
+            </div>
+        </div>
+
+        <section class="card mb-3 summary-card">
+            <div class="card-body">
+                <p class="mb-0">Showing 10 most recent events. Cost column currently uses fixed 7p/kWh and does not update stored <code>price</code>.</p>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-body table-wrap">
+                <table class="table table-sm table-striped table-hover" id="ohmeEventsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Duration (min)</th>
+                            <th>kWh</th>
+                            <th>Cost (£ @ 7p)</th>
+                            <th>Cross Checked</th>
+                            <th>Vehicle</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function postJson(url, body) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!response.ok) {
+                const txt = await response.text();
+                throw new Error(txt || 'Request failed');
+            }
+        }
+
+        document.querySelectorAll('.js-cross-check').forEach((el) => {
+            el.addEventListener('change', async () => {
+                try {
+                    await postJson('/api/ohme-events/update-cross-checked', {
+                        id: Number(el.dataset.id),
+                        cross_checked: el.checked
+                    });
+                } catch (error) {
+                    alert('Failed to update cross_checked: ' + error.message);
+                    el.checked = !el.checked;
+                }
+            });
+        });
+
+        document.querySelectorAll('.js-vehicle').forEach((el) => {
+            el.addEventListener('change', async () => {
+                try {
+                    await postJson('/api/ohme-events/update-vehicle', {
+                        id: Number(el.dataset.id),
+                        vehicle: el.value
+                    });
+                } catch (error) {
+                    alert('Failed to update vehicle: ' + error.message);
+                }
+            });
+        });
+    </script>
+</body>
+</html>`);
+    } catch (error) {
+        console.error('Error loading Ohme events page:', error);
+        res.status(500).send('Error loading Ohme events page');
+    } finally {
+        await client.end();
+    }
+});
+
+app.post('/api/ohme-events/update-cross-checked', async (req, res) => {
+    const { id, cross_checked } = req.body;
+
+    if (!Number.isInteger(id)) {
+        return res.status(400).send('Invalid id');
+    }
+
+    const client = new Client(dbConfig);
+    try {
+        await client.connect();
+        const result = await client.query(
+            'UPDATE ohme_charge_events SET cross_checked = $1, updated_at = NOW() WHERE id = $2',
+            [Boolean(cross_checked), id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).send('Event not found');
+        }
+
+        res.status(200).json({ ok: true });
+    } catch (error) {
+        console.error('Failed to update cross_checked:', error);
+        res.status(500).send('Failed to update cross_checked');
+    } finally {
+        await client.end();
+    }
+});
+
+app.post('/api/ohme-events/update-vehicle', async (req, res) => {
+    const { id, vehicle } = req.body;
+    const valid = ['Audi', 'BMW', 'unknown'];
+
+    if (!Number.isInteger(id)) {
+        return res.status(400).send('Invalid id');
+    }
+
+    if (!valid.includes(vehicle)) {
+        return res.status(400).send('Invalid vehicle');
+    }
+
+    const client = new Client(dbConfig);
+    try {
+        await client.connect();
+        const result = await client.query(
+            'UPDATE ohme_charge_events SET vehicle = $1, updated_at = NOW() WHERE id = $2',
+            [vehicle, id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).send('Event not found');
+        }
+
+        res.status(200).json({ ok: true });
+    } catch (error) {
+        console.error('Failed to update vehicle:', error);
+        res.status(500).send('Failed to update vehicle');
+    } finally {
+        await client.end();
+    }
+});
+
 // Serve the charging events page
 app.get('/view_charging_events', async (req, res) => {
     const { startDate, endDate } = req.query;
