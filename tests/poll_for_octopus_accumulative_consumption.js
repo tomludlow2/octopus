@@ -61,7 +61,7 @@ function normalizeRows(rows) {
 }
 
 (async () => {
-    const entityId = 'sensor.octopus_energy_electricity_19p0308490_2343265534613_current_accumulative_consumption';
+    const entityId = 'sensor.octopus_energy_electricity_26p1800836_2343265534613_current_accumulative_consumption';
 
     try {
         const config = loadHaConfig();
